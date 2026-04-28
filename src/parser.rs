@@ -200,8 +200,10 @@ pub fn module_summaries(archive: PathBuf, limit: Option<usize>) -> Result<Vec<Mo
 }
 
 pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> {
-    let left_report = parse_archive_report(left)?;
-    let right_report = parse_archive_report(right)?;
+    let left_parse = parse_archive_details(left)?;
+    let right_parse = parse_archive_details(right)?;
+    let left_report = &left_parse.report;
+    let right_report = &right_parse.report;
     let mut differences = Vec::new();
 
     compare_value(
@@ -319,11 +321,42 @@ pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> 
         right_report.bytes_read,
     );
 
+    let left_modules = module_fingerprints(&left_parse.modules);
+    let right_modules = module_fingerprints(&right_parse.modules);
+    let left_only_modules = left_modules
+        .difference(&right_modules)
+        .take(20)
+        .cloned()
+        .collect::<Vec<_>>();
+    let right_only_modules = right_modules
+        .difference(&left_modules)
+        .take(20)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if left_modules != right_modules {
+        differences.push(CompareDifference {
+            field: "module_fingerprints".to_string(),
+            left: format!(
+                "{} unique, {} sample-only",
+                left_modules.len(),
+                left_only_modules.len()
+            ),
+            right: format!(
+                "{} unique, {} sample-only",
+                right_modules.len(),
+                right_only_modules.len()
+            ),
+        });
+    }
+
     Ok(CompareReport {
-        left: left_report.archive,
-        right: right_report.archive,
+        left: left_report.archive.clone(),
+        right: right_report.archive.clone(),
         matching: differences.is_empty(),
         differences,
+        left_only_modules,
+        right_only_modules,
     })
 }
 
@@ -417,6 +450,38 @@ fn identifier_counts(modules: &[ParsedModule]) -> Vec<(usize, String)> {
 
 fn sum_module_count(modules: &[ParsedModule], count: impl Fn(&ParsedModule) -> usize) -> usize {
     modules.iter().map(count).sum()
+}
+
+fn module_fingerprints(modules: &[ParsedModule]) -> BTreeSet<String> {
+    modules.iter().map(module_fingerprint).collect()
+}
+
+fn module_fingerprint(module: &ParsedModule) -> String {
+    format!(
+        "id={}|name={}|version={}|spec={}|abstract={}|author={}|license={}|resources={}|install={}|download={}|ksp={}|ksp_min={}|ksp_max={}|depends={}|recommends={}|suggests={}|conflicts={}|provides={}",
+        optional_text(&module.identifier),
+        optional_text(&module.name),
+        optional_text(&module.version),
+        optional_text(&module.spec_version),
+        has_text(&module.abstract_text),
+        module.author_count,
+        module.license_count,
+        module.resource_count,
+        module.install_steps,
+        module.has_download,
+        optional_text(&module.ksp_version),
+        optional_text(&module.ksp_version_min),
+        optional_text(&module.ksp_version_max),
+        module.dependency_edges,
+        module.recommendation_edges,
+        module.suggestion_edges,
+        module.conflict_edges,
+        module.provided_identifiers
+    )
+}
+
+fn optional_text(value: &Option<String>) -> &str {
+    value.as_deref().unwrap_or("")
 }
 
 fn compare_value<T>(differences: &mut Vec<CompareDifference>, field: &str, left: T, right: T)

@@ -123,6 +123,22 @@ pub fn print_compare_report(report: &CompareReport) {
             );
         }
     }
+
+    if !report.left_only_modules.is_empty() {
+        println!();
+        println!("Left-only module fingerprint samples:");
+        for module in &report.left_only_modules {
+            println!("  {}", module);
+        }
+    }
+
+    if !report.right_only_modules.is_empty() {
+        println!();
+        println!("Right-only module fingerprint samples:");
+        for module in &report.right_only_modules {
+            println!("  {}", module);
+        }
+    }
 }
 
 fn print_module_table(modules: &[ModuleSummary]) {

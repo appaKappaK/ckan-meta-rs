@@ -128,7 +128,8 @@ Timing statistics:
   total min=150ms avg=156.70ms max=168ms total=1567ms
 ```
 
-The `compare` command checks that two sources produce the same metadata counts:
+The `compare` command checks that two sources produce the same metadata counts
+and normalized per-module fingerprints:
 
 ```text
 Left: data/CKAN-meta-master.zip

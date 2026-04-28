@@ -59,6 +59,8 @@ pub struct CompareReport {
     pub right: String,
     pub matching: bool,
     pub differences: Vec<CompareDifference>,
+    pub left_only_modules: Vec<String>,
+    pub right_only_modules: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
