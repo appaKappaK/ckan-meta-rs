@@ -181,6 +181,14 @@ pub fn print_module_inspection(report: &ModuleInspection, json: bool) -> Result<
     println!("Matched modules:");
     print_module_table(&report.modules);
 
+    if !report.modules.is_empty() {
+        println!();
+        println!("Direct relationships:");
+        for module in &report.modules {
+            print_module_relationships(module);
+        }
+    }
+
     println!();
     println!("Reverse relationships:");
     print_relation_table(&report.reverse_relationships);
@@ -225,6 +233,22 @@ fn print_relation_table(matches: &[RelationMatch]) {
     }
 }
 
+fn print_module_relationships(module: &ModuleSummary) {
+    println!(
+        "{} {}",
+        module.identifier.as_deref().unwrap_or("-"),
+        module.version.as_deref().unwrap_or("-")
+    );
+    println!("  depends: {}", join_or_dash(&module.dependency_names));
+    println!(
+        "  recommends: {}",
+        join_or_dash(&module.recommendation_names)
+    );
+    println!("  suggests: {}", join_or_dash(&module.suggestion_names));
+    println!("  conflicts: {}", join_or_dash(&module.conflict_names));
+    println!("  provides: {}", join_or_dash(&module.provided_names));
+}
+
 fn print_relationship_counts(
     dependency_edges: usize,
     recommendation_edges: usize,
@@ -240,6 +264,14 @@ fn print_relationship_counts(
         conflict_edges,
         provided_identifiers
     );
+}
+
+fn join_or_dash(values: &[String]) -> String {
+    if values.is_empty() {
+        "-".to_string()
+    } else {
+        values.join(", ")
+    }
 }
 
 fn print_timing_stats(label: &str, stats: &TimingStats) {
