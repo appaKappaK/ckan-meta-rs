@@ -59,10 +59,11 @@ Useful commands:
 target/release/ckan-meta-rs find data/CKAN-meta-master AVP-4kTextures --json-lines --limit 4
 target/release/ckan-meta-rs relations data/CKAN-meta-master AstronomersVisualPack --limit 20
 target/release/ckan-meta-rs relations data/CKAN-meta-master TUFX --limit 20
+target/release/ckan-meta-rs catalog-index data/CKAN-meta-master --output data/catalog-index.json --latest-only
 ```
 
 ## Next Technical Steps
 
 - Compare this summary output against CKAN's `RepositoryData.FromStream(...)`.
-- Decide whether the helper should output JSON lines, a single JSON summary, or a compact binary cache.
-- Measure whether CKAN-Linux can use an extracted metadata cache without disrupting existing repository update semantics.
+- Use `catalog-index` as the CKAN-Linux sidecar contract for catalog/search experiments.
+- Measure whether CKAN-Linux can use the sidecar index without disrupting existing repository update semantics.

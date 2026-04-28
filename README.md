@@ -16,8 +16,12 @@ path. This project should stay read-only until its output is proven compatible.
   - `version`
   - `spec_version`
   - `abstract`
+  - `description`
   - `author`
   - `license`
+  - `kind`
+  - `release_date`
+  - `download_size`
   - `install`
   - `resources`
   - `download`
@@ -33,6 +37,8 @@ path. This project should stay read-only until its output is proven compatible.
 - Reports read/parse/total timings.
 - Benchmarks repeated parses with warmups and min/avg/max/total timing stats.
 - Emits stable per-module summaries for compatibility comparison work.
+- Emits a CKAN-Linux catalog sidecar index with module rows, reverse relationship
+  edges, and provider mappings.
 - Can emit either a terminal report or JSON.
 
 ## Usage
@@ -49,6 +55,8 @@ ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
 ckan-meta-rs latest /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output summary.json
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output modules.jsonl --json-lines
+ckan-meta-rs catalog-index /path/to/CKAN-meta-master.zip --output catalog-index.json --latest-only
+ckan-meta-rs validate-catalog-index catalog-index.json
 ckan-meta-rs validate-export modules.jsonl --json-lines
 ckan-meta-rs fetch --output data/CKAN-meta-master.zip
 ckan-meta-rs cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
@@ -71,6 +79,8 @@ cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- latest /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- export /path/to/CKAN-meta-master.zip --output summary.json
+cargo run -- catalog-index /path/to/CKAN-meta-master.zip --output catalog-index.json --latest-only
+cargo run -- validate-catalog-index catalog-index.json
 cargo run -- validate-export summary.json
 cargo run -- fetch --output data/CKAN-meta-master.zip
 cargo run -- cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
@@ -245,8 +255,20 @@ The `export` command is the intended CKAN-Linux bridge. Package JSON includes
 `schema_version`, aggregate report data, and all module summaries. JSON-lines
 mode writes one module summary per line for streaming consumers.
 
+Use `catalog-index` for a richer CKAN-Linux sidecar file. It writes package JSON
+with all module versions, latest-version flags, version counts, split
+relationship target names, reverse relationship rows, and provider mappings. This
+is meant for fast catalog/search experiments while CKAN's C# registry and
+resolver remain authoritative for install decisions.
+
+Pass `--latest-only` to write just the newest version per identifier. The command
+writes compact JSON by default for faster sidecar loading; pass `--pretty` when
+you want a human-readable file.
+
 Use `validate-export` to verify a bridge file is readable and has expected
 summary counts before another process consumes it.
+
+Use `validate-catalog-index` for the richer sidecar format.
 
 Use `latest` for a compact current-version view: one selected module summary per
 identifier using the same CKAN-ish version ordering as `inspect --latest`.
@@ -271,5 +293,5 @@ ckan-meta-rs compare data/CKAN-meta-master.zip data/CKAN-meta-cache
 ## Next Steps
 
 - Compare the parsed counts against CKAN's `RepositoryData.FromStream(...)` output.
-- Investigate whether a persistent unpacked metadata cache is practical for CKAN-Linux.
-- Only consider CKAN integration if the parser is substantially faster on real metadata.
+- Measure the `catalog-index` output against CKAN-Linux catalog load/search paths.
+- Keep install and dependency resolution in CKAN until sidecar output is proven equivalent.

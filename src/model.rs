@@ -146,9 +146,13 @@ pub struct MinimalModule {
     pub name: Option<String>,
     #[serde(rename = "abstract")]
     pub abstract_text: Option<String>,
+    pub description: Option<String>,
     pub author: Option<Value>,
     pub license: Option<Value>,
     pub version: Option<Value>,
+    pub kind: Option<String>,
+    pub release_date: Option<String>,
+    pub download_size: Option<Value>,
     pub ksp_version: Option<Value>,
     pub ksp_version_min: Option<Value>,
     pub ksp_version_max: Option<Value>,
@@ -170,6 +174,12 @@ pub struct ParsedModule {
     pub version: Option<String>,
     pub spec_version: Option<String>,
     pub abstract_text: Option<String>,
+    pub description: Option<String>,
+    pub authors: Vec<String>,
+    pub licenses: Vec<String>,
+    pub kind: Option<String>,
+    pub release_date: Option<String>,
+    pub download_size: Option<u64>,
     pub author_count: usize,
     pub license_count: usize,
     pub resource_count: usize,
@@ -216,6 +226,77 @@ pub struct ModuleSummary {
     pub suggestion_names: Vec<String>,
     pub conflict_names: Vec<String>,
     pub provided_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogIndex {
+    pub schema_version: u32,
+    pub source: String,
+    pub generated_by: String,
+    pub report: CatalogIndexReport,
+    pub modules: Vec<CatalogModule>,
+    pub relations: Vec<CatalogRelation>,
+    pub providers: Vec<CatalogProvider>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogIndexReport {
+    pub parsed_modules: usize,
+    pub unique_identifiers: usize,
+    pub latest_modules: usize,
+    pub dependency_edges: usize,
+    pub recommendation_edges: usize,
+    pub suggestion_edges: usize,
+    pub conflict_edges: usize,
+    pub provided_identifiers: usize,
+    pub parse_errors: usize,
+    pub read_ms: u128,
+    pub parse_ms: u128,
+    pub elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogModule {
+    pub path: String,
+    pub identifier: String,
+    pub name: String,
+    pub version: Option<String>,
+    pub spec_version: Option<String>,
+    pub abstract_text: Option<String>,
+    pub description: Option<String>,
+    pub authors: Vec<String>,
+    pub licenses: Vec<String>,
+    pub kind: Option<String>,
+    pub release_date: Option<String>,
+    pub download_size: Option<u64>,
+    pub ksp_version: Option<String>,
+    pub ksp_version_min: Option<String>,
+    pub ksp_version_max: Option<String>,
+    pub dependency_names: Vec<String>,
+    pub recommendation_names: Vec<String>,
+    pub suggestion_names: Vec<String>,
+    pub conflict_names: Vec<String>,
+    pub provided_names: Vec<String>,
+    pub version_count: usize,
+    pub is_latest: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogRelation {
+    pub relationship: String,
+    pub source_identifier: String,
+    pub source_name: String,
+    pub source_version: Option<String>,
+    pub target: String,
+    pub raw_target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogProvider {
+    pub provided: String,
+    pub identifier: String,
+    pub name: String,
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -277,6 +358,23 @@ pub struct ExportValidationReport {
     pub schema_version: Option<u32>,
     pub modules: usize,
     pub unique_identifiers: usize,
+    pub missing_identifier: usize,
+    pub dependency_edges: usize,
+    pub recommendation_edges: usize,
+    pub suggestion_edges: usize,
+    pub conflict_edges: usize,
+    pub provided_identifiers: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogIndexValidationReport {
+    pub input: String,
+    pub schema_version: u32,
+    pub modules: usize,
+    pub unique_identifiers: usize,
+    pub latest_modules: usize,
+    pub relations: usize,
+    pub providers: usize,
     pub missing_identifier: usize,
     pub dependency_edges: usize,
     pub recommendation_edges: usize,

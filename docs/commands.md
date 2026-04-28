@@ -33,12 +33,23 @@ CLI checks when CKAN-Linux test fixtures are available.
 ```bash
 ckan-meta-rs export data/CKAN-meta-cache --output data/summary.json
 ckan-meta-rs export data/CKAN-meta-cache --output data/modules.jsonl --json-lines
+ckan-meta-rs catalog-index data/CKAN-meta-cache --output data/catalog-index.json --latest-only
+ckan-meta-rs validate-catalog-index data/catalog-index.json
 ckan-meta-rs validate-export data/summary.json
 ckan-meta-rs validate-export data/modules.jsonl --json-lines
 ```
 
 Package JSON includes schema and aggregate report data. JSON-lines output is one
 module summary per line.
+
+`catalog-index` writes the richer CKAN-Linux sidecar shape: all module versions,
+latest flags, version counts, split relationship target names, reverse
+relationship edges, and provider mappings. It is intended for catalog/search
+experiments, not resolver replacement.
+
+Use `--latest-only` for the smaller browse/search sidecar. Omit it when a
+consumer needs every historical module version. JSON is compact by default; use
+`--pretty` for manual inspection.
 
 ## Analysis Commands
 

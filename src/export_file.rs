@@ -5,7 +5,10 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::model::{ExportPackage, ExportValidationReport, ModuleSummary};
+use crate::model::{
+    CatalogIndex, CatalogIndexValidationReport, ExportPackage, ExportValidationReport,
+    ModuleSummary,
+};
 
 pub fn validate_export_file(path: &Path, json_lines: bool) -> Result<ExportValidationReport> {
     if json_lines {
@@ -13,6 +16,58 @@ pub fn validate_export_file(path: &Path, json_lines: bool) -> Result<ExportValid
     } else {
         validate_package(path)
     }
+}
+
+pub fn validate_catalog_index_file(path: &Path) -> Result<CatalogIndexValidationReport> {
+    let file = File::open(path)?;
+    let index = serde_json::from_reader::<_, CatalogIndex>(file)?;
+    let unique_identifiers = index
+        .modules
+        .iter()
+        .map(|module| &module.identifier)
+        .filter(|identifier| !identifier.is_empty())
+        .collect::<BTreeSet<_>>()
+        .len();
+
+    Ok(CatalogIndexValidationReport {
+        input: path.display().to_string(),
+        schema_version: index.schema_version,
+        modules: index.modules.len(),
+        unique_identifiers,
+        latest_modules: index
+            .modules
+            .iter()
+            .filter(|module| module.is_latest)
+            .count(),
+        relations: index.relations.len(),
+        providers: index.providers.len(),
+        missing_identifier: index
+            .modules
+            .iter()
+            .filter(|module| module.identifier.is_empty())
+            .count(),
+        dependency_edges: index
+            .relations
+            .iter()
+            .filter(|rel| rel.relationship == "depends")
+            .count(),
+        recommendation_edges: index
+            .relations
+            .iter()
+            .filter(|rel| rel.relationship == "recommends")
+            .count(),
+        suggestion_edges: index
+            .relations
+            .iter()
+            .filter(|rel| rel.relationship == "suggests")
+            .count(),
+        conflict_edges: index
+            .relations
+            .iter()
+            .filter(|rel| rel.relationship == "conflicts")
+            .count(),
+        provided_identifiers: index.providers.len(),
+    })
 }
 
 fn validate_package(path: &Path) -> Result<ExportValidationReport> {

@@ -5,9 +5,10 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::model::{
-    BenchReport, CompareReport, DownloadReport, ExportPackage, ExportValidationReport,
-    ExtractionReport, ModuleInspection, ModuleSummary, ParseReport, RelationMatch,
-    RelationStatsReport, SyncReport, TimingStats, UnresolvedRelationReport,
+    BenchReport, CatalogIndex, CatalogIndexValidationReport, CompareReport, DownloadReport,
+    ExportPackage, ExportValidationReport, ExtractionReport, ModuleInspection, ModuleSummary,
+    ParseReport, RelationMatch, RelationStatsReport, SyncReport, TimingStats,
+    UnresolvedRelationReport,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -179,6 +180,23 @@ pub fn write_export_package(
     Ok(())
 }
 
+pub fn write_catalog_index(index: &CatalogIndex, output: &Path, pretty: bool) -> Result<()> {
+    let writer: Box<dyn Write> = if output == Path::new("-") {
+        Box::new(io::stdout().lock())
+    } else {
+        Box::new(File::create(output)?)
+    };
+    let mut writer = BufWriter::new(writer);
+    if pretty {
+        serde_json::to_writer_pretty(&mut writer, index)?;
+    } else {
+        serde_json::to_writer(&mut writer, index)?;
+    }
+    writeln!(writer)?;
+    writer.flush()?;
+    Ok(())
+}
+
 pub fn print_export_validation(report: &ExportValidationReport, json: bool) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(report)?);
@@ -196,6 +214,34 @@ pub fn print_export_validation(report: &ExportValidationReport, json: bool) -> R
     );
     println!("Modules: {}", report.modules);
     println!("Unique identifiers: {}", report.unique_identifiers);
+    println!("Missing identifiers: {}", report.missing_identifier);
+    print_relationship_counts(
+        report.dependency_edges,
+        report.recommendation_edges,
+        report.suggestion_edges,
+        report.conflict_edges,
+        report.provided_identifiers,
+    );
+
+    Ok(())
+}
+
+pub fn print_catalog_index_validation(
+    report: &CatalogIndexValidationReport,
+    json: bool,
+) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Input: {}", report.input);
+    println!("Schema version: {}", report.schema_version);
+    println!("Modules: {}", report.modules);
+    println!("Unique identifiers: {}", report.unique_identifiers);
+    println!("Latest modules: {}", report.latest_modules);
+    println!("Relations: {}", report.relations);
+    println!("Providers: {}", report.providers);
     println!("Missing identifiers: {}", report.missing_identifier);
     print_relationship_counts(
         report.dependency_edges,

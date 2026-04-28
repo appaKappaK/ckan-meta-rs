@@ -15,6 +15,8 @@ if [[ -f "$zip_fixture" ]]; then
     target/release/ckan-meta-rs modules "$zip_fixture" --limit 3 >/dev/null
     target/release/ckan-meta-rs latest "$zip_fixture" --limit 3 >/dev/null
     target/release/ckan-meta-rs export "$zip_fixture" --output /tmp/ckan-meta-rs-smoke.json
+    target/release/ckan-meta-rs catalog-index "$zip_fixture" --output /tmp/ckan-meta-rs-catalog-index.json --latest-only
+    target/release/ckan-meta-rs validate-catalog-index /tmp/ckan-meta-rs-catalog-index.json >/dev/null
     target/release/ckan-meta-rs validate-export /tmp/ckan-meta-rs-smoke.json >/dev/null
 fi
 

@@ -13,18 +13,19 @@ mod parser;
 
 use archive::extract_relevant_entries;
 use download::download_to_file;
-use export_file::validate_export_file;
+use export_file::{validate_catalog_index_file, validate_export_file};
 use model::SyncReport;
 use output::{
-    print_bench_report, print_compare_report, print_download_report, print_export_validation,
-    print_extraction_report, print_module_inspection, print_module_summaries,
-    print_relation_matches, print_relation_stats, print_report, print_sync_report,
-    print_unresolved_relations, write_export_package,
+    print_bench_report, print_catalog_index_validation, print_compare_report,
+    print_download_report, print_export_validation, print_extraction_report,
+    print_module_inspection, print_module_summaries, print_relation_matches, print_relation_stats,
+    print_report, print_sync_report, print_unresolved_relations, write_catalog_index,
+    write_export_package,
 };
 use parser::{
-    benchmark_archive, compare_archives, export_package, find_module_summaries, inspect_module,
-    latest_module_summaries, module_summaries, parse_archive_report, relation_matches,
-    relation_stats, unresolved_relations,
+    benchmark_archive, catalog_index, compare_archives, export_package, find_module_summaries,
+    inspect_module, latest_module_summaries, module_summaries, parse_archive_report,
+    relation_matches, relation_stats, unresolved_relations,
 };
 
 #[derive(Debug, Parser)]
@@ -117,6 +118,34 @@ enum Command {
         /// Emit one module JSON object per line instead of a package object.
         #[arg(long)]
         json_lines: bool,
+    },
+
+    /// Export a CKAN-Linux catalog/search sidecar index.
+    CatalogIndex {
+        /// Path to a CKAN metadata source.
+        archive: PathBuf,
+
+        /// Output file path, or '-' for stdout.
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Include only the latest version per identifier.
+        #[arg(long)]
+        latest_only: bool,
+
+        /// Pretty-print JSON instead of compact JSON.
+        #[arg(long)]
+        pretty: bool,
+    },
+
+    /// Validate a CKAN-Linux catalog/search sidecar index.
+    ValidateCatalogIndex {
+        /// Catalog index file path.
+        input: PathBuf,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Validate an exported summary file.
@@ -365,6 +394,13 @@ fn main() -> Result<()> {
             output,
             json_lines,
         } => export(archive, output, json_lines),
+        Command::CatalogIndex {
+            archive,
+            output,
+            latest_only,
+            pretty,
+        } => catalog_index_command(archive, output, latest_only, pretty),
+        Command::ValidateCatalogIndex { input, json } => validate_catalog_index(input, json),
         Command::ValidateExport {
             input,
             json_lines,
@@ -472,6 +508,21 @@ fn latest(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>) 
 fn export(archive: PathBuf, output: PathBuf, json_lines: bool) -> Result<()> {
     let package = export_package(archive)?;
     write_export_package(&package, &output, json_lines)
+}
+
+fn catalog_index_command(
+    archive: PathBuf,
+    output: PathBuf,
+    latest_only: bool,
+    pretty: bool,
+) -> Result<()> {
+    let index = catalog_index(archive, latest_only)?;
+    write_catalog_index(&index, &output, pretty)
+}
+
+fn validate_catalog_index(input: PathBuf, json: bool) -> Result<()> {
+    let report = validate_catalog_index_file(&input)?;
+    print_catalog_index_validation(&report, json)
 }
 
 fn validate_export(input: PathBuf, json_lines: bool, json: bool) -> Result<()> {

@@ -9,11 +9,11 @@ use serde_json::Value;
 
 use crate::archive::{archive_kind, load_archive, TextEntry};
 use crate::model::{
-    clean_string, collection_len, has_text, has_value, value_to_text, BenchReport,
-    CompareDifference, CompareReport, ExportPackage, IdentifierCount, MinimalModule,
-    ModuleInspection, ModuleSummary, ParseError, ParseReport, ParsedModule, RelationMatch,
-    RelationStatsReport, RelationTargetCount, TimingStats, UnresolvedRelationReport,
-    UnresolvedRelationTarget,
+    clean_string, collection_len, has_text, has_value, value_to_text, BenchReport, CatalogIndex,
+    CatalogIndexReport, CatalogModule, CatalogProvider, CatalogRelation, CompareDifference,
+    CompareReport, ExportPackage, IdentifierCount, MinimalModule, ModuleInspection, ModuleSummary,
+    ParseError, ParseReport, ParsedModule, RelationMatch, RelationStatsReport, RelationTargetCount,
+    TimingStats, UnresolvedRelationReport, UnresolvedRelationTarget,
 };
 
 #[derive(Debug)]
@@ -249,6 +249,65 @@ pub fn export_package(archive: PathBuf) -> Result<ExportPackage> {
         report: parsed.report,
         modules,
     })
+}
+
+pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex> {
+    let parsed = parse_archive_details(archive)?;
+    let version_counts = version_counts_by_identifier(&parsed.modules);
+    let latest_paths = latest_paths_by_identifier(&parsed.modules);
+
+    let modules = parsed
+        .modules
+        .iter()
+        .filter(|module| !latest_only || module_is_latest(module, &latest_paths))
+        .filter_map(|module| catalog_module(module, &version_counts, &latest_paths))
+        .collect::<Vec<_>>();
+    let relations = parsed
+        .modules
+        .iter()
+        .filter(|module| !latest_only || module_is_latest(module, &latest_paths))
+        .flat_map(catalog_relations_from_parsed)
+        .collect::<Vec<_>>();
+    let providers = modules
+        .iter()
+        .flat_map(catalog_providers)
+        .collect::<Vec<_>>();
+
+    Ok(CatalogIndex {
+        schema_version: 1,
+        source: parsed.report.archive.clone(),
+        generated_by: env!("CARGO_PKG_NAME").to_string(),
+        report: CatalogIndexReport {
+            parsed_modules: parsed.report.parsed_modules,
+            unique_identifiers: parsed.report.unique_identifiers,
+            latest_modules: latest_paths.len(),
+            dependency_edges: parsed.report.dependency_edges,
+            recommendation_edges: parsed.report.recommendation_edges,
+            suggestion_edges: parsed.report.suggestion_edges,
+            conflict_edges: parsed.report.conflict_edges,
+            provided_identifiers: parsed.report.provided_identifiers,
+            parse_errors: parsed.report.parse_errors,
+            read_ms: parsed.report.read_ms,
+            parse_ms: parsed.report.parse_ms,
+            elapsed_ms: parsed.report.elapsed_ms,
+        },
+        modules,
+        relations,
+        providers,
+    })
+}
+
+fn module_is_latest(module: &ParsedModule, latest_paths: &BTreeMap<String, String>) -> bool {
+    let Some(identifier) = module
+        .identifier
+        .as_ref()
+        .filter(|identifier| !identifier.is_empty())
+    else {
+        return false;
+    };
+    latest_paths
+        .get(identifier)
+        .is_some_and(|path| path == &module.path)
 }
 
 pub fn find_module_summaries(
@@ -732,6 +791,12 @@ fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
         version: raw.version.as_ref().map(value_to_text),
         spec_version: raw.spec_version.as_ref().map(value_to_text),
         abstract_text: raw.abstract_text.map(clean_string),
+        description: raw.description.map(clean_string),
+        authors: string_values(raw.author.as_ref()),
+        licenses: string_values(raw.license.as_ref()),
+        kind: raw.kind.map(clean_string),
+        release_date: raw.release_date.map(clean_string),
+        download_size: raw.download_size.as_ref().and_then(value_to_u64),
         author_count: collection_len(raw.author.as_ref()),
         license_count: collection_len(raw.license.as_ref()),
         resource_count: collection_len(raw.resources.as_ref()),
@@ -753,6 +818,195 @@ fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
     })
 }
 
+fn catalog_module(
+    module: &ParsedModule,
+    version_counts: &BTreeMap<String, usize>,
+    latest_paths: &BTreeMap<String, String>,
+) -> Option<CatalogModule> {
+    let identifier = module.identifier.as_ref()?.trim();
+    if identifier.is_empty() {
+        return None;
+    }
+
+    let name = module
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(identifier)
+        .to_string();
+
+    Some(CatalogModule {
+        path: module.path.clone(),
+        identifier: identifier.to_string(),
+        name,
+        version: module.version.clone(),
+        spec_version: module.spec_version.clone(),
+        abstract_text: module.abstract_text.clone(),
+        description: module.description.clone(),
+        authors: module.authors.clone(),
+        licenses: module.licenses.clone(),
+        kind: module.kind.clone(),
+        release_date: module.release_date.clone(),
+        download_size: module.download_size,
+        ksp_version: module.ksp_version.clone(),
+        ksp_version_min: module.ksp_version_min.clone(),
+        ksp_version_max: module.ksp_version_max.clone(),
+        dependency_names: split_relationship_options(&module.dependency_names),
+        recommendation_names: split_relationship_options(&module.recommendation_names),
+        suggestion_names: split_relationship_options(&module.suggestion_names),
+        conflict_names: split_relationship_options(&module.conflict_names),
+        provided_names: split_relationship_options(&module.provided_names),
+        version_count: version_counts.get(identifier).copied().unwrap_or(1),
+        is_latest: latest_paths
+            .get(identifier)
+            .is_some_and(|path| path == &module.path),
+    })
+}
+
+fn catalog_relations_from_parsed(module: &ParsedModule) -> Vec<CatalogRelation> {
+    let Some(identifier) = module
+        .identifier
+        .as_deref()
+        .map(str::trim)
+        .filter(|identifier| !identifier.is_empty())
+    else {
+        return Vec::new();
+    };
+    let source_name = module
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(identifier)
+        .to_string();
+
+    let mut relations = Vec::new();
+    append_catalog_relations(
+        &mut relations,
+        identifier,
+        &source_name,
+        &module.version,
+        "depends",
+        &module.dependency_names,
+    );
+    append_catalog_relations(
+        &mut relations,
+        identifier,
+        &source_name,
+        &module.version,
+        "recommends",
+        &module.recommendation_names,
+    );
+    append_catalog_relations(
+        &mut relations,
+        identifier,
+        &source_name,
+        &module.version,
+        "suggests",
+        &module.suggestion_names,
+    );
+    append_catalog_relations(
+        &mut relations,
+        identifier,
+        &source_name,
+        &module.version,
+        "conflicts",
+        &module.conflict_names,
+    );
+    relations
+}
+
+fn append_catalog_relations(
+    relations: &mut Vec<CatalogRelation>,
+    source_identifier: &str,
+    source_name: &str,
+    source_version: &Option<String>,
+    relationship: &str,
+    targets: &[String],
+) {
+    for raw_target in targets {
+        for target in raw_target
+            .split('|')
+            .map(str::trim)
+            .filter(|target| !target.is_empty())
+        {
+            relations.push(CatalogRelation {
+                relationship: relationship.to_string(),
+                source_identifier: source_identifier.to_string(),
+                source_name: source_name.to_string(),
+                source_version: source_version.clone(),
+                target: target.to_string(),
+                raw_target: raw_target.clone(),
+            });
+        }
+    }
+}
+
+fn catalog_providers(module: &CatalogModule) -> Vec<CatalogProvider> {
+    module
+        .provided_names
+        .iter()
+        .map(|provided| CatalogProvider {
+            provided: provided.clone(),
+            identifier: module.identifier.clone(),
+            name: module.name.clone(),
+            version: module.version.clone(),
+        })
+        .collect()
+}
+
+fn version_counts_by_identifier(modules: &[ParsedModule]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for module in modules {
+        if let Some(identifier) = module
+            .identifier
+            .as_ref()
+            .filter(|identifier| !identifier.is_empty())
+        {
+            *counts.entry(identifier.clone()).or_default() += 1;
+        }
+    }
+    counts
+}
+
+fn latest_paths_by_identifier(modules: &[ParsedModule]) -> BTreeMap<String, String> {
+    let mut latest_by_identifier = BTreeMap::<String, &ParsedModule>::new();
+    for module in modules {
+        let Some(identifier) = module
+            .identifier
+            .as_ref()
+            .filter(|identifier| !identifier.is_empty())
+        else {
+            continue;
+        };
+        latest_by_identifier
+            .entry(identifier.clone())
+            .and_modify(|current| {
+                if compare_version_text(&module.version, &current.version).is_gt() {
+                    *current = module;
+                }
+            })
+            .or_insert(module);
+    }
+
+    latest_by_identifier
+        .into_iter()
+        .map(|(identifier, module)| (identifier, module.path.clone()))
+        .collect()
+}
+
+fn split_relationship_options(names: &[String]) -> Vec<String> {
+    let mut values = names
+        .iter()
+        .flat_map(|name| name.split('|'))
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
+}
+
 fn relationship_names(value: Option<&Value>) -> Vec<String> {
     let mut names = match value {
         Some(Value::Array(items)) => items.iter().filter_map(relationship_name).collect(),
@@ -761,6 +1015,32 @@ fn relationship_names(value: Option<&Value>) -> Vec<String> {
     };
     names.sort();
     names
+}
+
+fn string_values(value: Option<&Value>) -> Vec<String> {
+    let mut values = match value {
+        Some(Value::Array(items)) => items.iter().filter_map(string_value).collect(),
+        Some(item) => string_value(item).into_iter().collect(),
+        None => Vec::new(),
+    };
+    values.sort();
+    values
+}
+
+fn string_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.trim().to_string()).filter(|text| !text.is_empty()),
+        other if !other.is_null() => {
+            Some(value_to_text(other).trim().to_string()).filter(|text| !text.is_empty())
+        }
+        _ => None,
+    }
+}
+
+fn value_to_u64(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_str()?.trim().parse::<u64>().ok())
 }
 
 fn relationship_name(value: &Value) -> Option<String> {
@@ -859,12 +1139,18 @@ fn module_fingerprints(modules: &[ParsedModule]) -> BTreeSet<String> {
 
 fn module_fingerprint(module: &ParsedModule) -> String {
     format!(
-        "id={}|name={}|version={}|spec={}|abstract={}|author={}|license={}|resources={}|install={}|download={}|ksp={}|ksp_min={}|ksp_max={}|depends={}:{}|recommends={}:{}|suggests={}:{}|conflicts={}:{}|provides={}:{}",
+        "id={}|name={}|version={}|spec={}|abstract={}|description={}|authors={}|licenses={}|kind={}|release_date={}|download_size={}|author={}|license={}|resources={}|install={}|download={}|ksp={}|ksp_min={}|ksp_max={}|depends={}:{}|recommends={}:{}|suggests={}:{}|conflicts={}:{}|provides={}:{}",
         optional_text(&module.identifier),
         optional_text(&module.name),
         optional_text(&module.version),
         optional_text(&module.spec_version),
         has_text(&module.abstract_text),
+        has_text(&module.description),
+        module.authors.join(","),
+        module.licenses.join(","),
+        optional_text(&module.kind),
+        optional_text(&module.release_date),
+        module.download_size.unwrap_or(0),
         module.author_count,
         module.license_count,
         module.resource_count,
@@ -1061,9 +1347,13 @@ mod tests {
                 "identifier": "Example",
                 "name": "Example Mod",
                 "abstract": "Short description",
+                "description": "Long description",
                 "author": ["First", "Second"],
                 "license": "MIT",
+                "kind": "package",
                 "version": "1.2.3",
+                "release_date": "2026-04-28T00:00:00Z",
+                "download_size": 12345,
                 "ksp_version_min": "1.12",
                 "ksp_version_max": "1.12.5",
                 "download": "https://example.invalid/mod.zip",
@@ -1096,6 +1386,15 @@ mod tests {
         assert_eq!(parsed.version.as_deref(), Some("1.2.3"));
         assert_eq!(parsed.spec_version.as_deref(), Some("1"));
         assert_eq!(parsed.abstract_text.as_deref(), Some("Short description"));
+        assert_eq!(parsed.description.as_deref(), Some("Long description"));
+        assert_eq!(
+            parsed.authors,
+            vec!["First".to_string(), "Second".to_string()]
+        );
+        assert_eq!(parsed.licenses, vec!["MIT".to_string()]);
+        assert_eq!(parsed.kind.as_deref(), Some("package"));
+        assert_eq!(parsed.release_date.as_deref(), Some("2026-04-28T00:00:00Z"));
+        assert_eq!(parsed.download_size, Some(12345));
         assert_eq!(parsed.author_count, 2);
         assert_eq!(parsed.license_count, 1);
         assert_eq!(parsed.install_steps, 1);
@@ -1152,32 +1451,9 @@ mod tests {
 
     #[test]
     fn relation_lookup_matches_any_of_members() {
-        let module = ParsedModule {
-            path: "Example.ckan".to_string(),
-            identifier: Some("Example".to_string()),
-            name: Some("Example".to_string()),
-            version: Some("1.0".to_string()),
-            spec_version: Some("v1.0".to_string()),
-            abstract_text: None,
-            author_count: 0,
-            license_count: 0,
-            resource_count: 0,
-            install_steps: 0,
-            has_download: false,
-            ksp_version: None,
-            ksp_version_min: None,
-            ksp_version_max: None,
-            dependency_edges: 1,
-            recommendation_edges: 0,
-            suggestion_edges: 0,
-            conflict_edges: 0,
-            provided_identifiers: 0,
-            dependency_names: vec!["FirstOption|SecondOption".to_string()],
-            recommendation_names: Vec::new(),
-            suggestion_names: Vec::new(),
-            conflict_names: Vec::new(),
-            provided_names: Vec::new(),
-        };
+        let mut module = test_module("Example", "1.0", "Example.ckan");
+        module.dependency_edges = 1;
+        module.dependency_names = vec!["FirstOption|SecondOption".to_string()];
         let mut matches = Vec::new();
 
         collect_relation_matches(
@@ -1190,6 +1466,79 @@ mod tests {
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].target, "FirstOption|SecondOption");
+    }
+
+    #[test]
+    fn catalog_index_modules_mark_latest_and_split_relationship_targets() {
+        let mut old_module = test_module("Example", "1.0", "Example-1.0.ckan");
+        old_module.dependency_names = vec!["FirstOption|SecondOption".to_string()];
+        let mut new_module = test_module("Example", "2.0", "Example-2.0.ckan");
+        new_module.provided_names = vec!["ExampleVirtual".to_string()];
+        let modules = vec![old_module, new_module];
+        let version_counts = version_counts_by_identifier(&modules);
+        let latest_paths = latest_paths_by_identifier(&modules);
+
+        let catalog_modules = modules
+            .iter()
+            .filter_map(|module| catalog_module(module, &version_counts, &latest_paths))
+            .collect::<Vec<_>>();
+        let relations = modules
+            .iter()
+            .flat_map(catalog_relations_from_parsed)
+            .collect::<Vec<_>>();
+        let providers = catalog_modules
+            .iter()
+            .flat_map(catalog_providers)
+            .collect::<Vec<_>>();
+
+        assert_eq!(catalog_modules.len(), 2);
+        assert_eq!(catalog_modules[0].version_count, 2);
+        assert!(!catalog_modules[0].is_latest);
+        assert!(catalog_modules[1].is_latest);
+        assert_eq!(
+            catalog_modules[0].dependency_names,
+            vec!["FirstOption".to_string(), "SecondOption".to_string()]
+        );
+        assert_eq!(relations.len(), 2);
+        assert_eq!(relations[0].raw_target, "FirstOption|SecondOption");
+        assert_eq!(relations[1].target, "SecondOption");
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].provided, "ExampleVirtual");
+    }
+
+    fn test_module(identifier: &str, version: &str, path: &str) -> ParsedModule {
+        ParsedModule {
+            path: path.to_string(),
+            identifier: Some(identifier.to_string()),
+            name: Some(identifier.to_string()),
+            version: Some(version.to_string()),
+            spec_version: Some("v1.0".to_string()),
+            abstract_text: None,
+            description: None,
+            authors: Vec::new(),
+            licenses: Vec::new(),
+            kind: None,
+            release_date: None,
+            download_size: None,
+            author_count: 0,
+            license_count: 0,
+            resource_count: 0,
+            install_steps: 0,
+            has_download: false,
+            ksp_version: None,
+            ksp_version_min: None,
+            ksp_version_max: None,
+            dependency_edges: 0,
+            recommendation_edges: 0,
+            suggestion_edges: 0,
+            conflict_edges: 0,
+            provided_identifiers: 0,
+            dependency_names: Vec::new(),
+            recommendation_names: Vec::new(),
+            suggestion_names: Vec::new(),
+            conflict_names: Vec::new(),
+            provided_names: Vec::new(),
+        }
     }
 
     #[test]
