@@ -763,4 +763,69 @@ mod tests {
         assert!(is_relevant_entry("CKAN-meta/repositories.json"));
         assert!(!is_relevant_entry("README.md"));
     }
+
+    #[test]
+    fn extracts_any_of_relationship_names_as_one_edge() {
+        let value = serde_json::json!([
+            {
+                "any_of": [
+                    { "name": "FirstOption" },
+                    { "name": "SecondOption" }
+                ]
+            },
+            { "name": "RequiredMod" }
+        ]);
+
+        let names = relationship_names(Some(&value));
+
+        assert_eq!(
+            names,
+            vec![
+                "FirstOption|SecondOption".to_string(),
+                "RequiredMod".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn relation_lookup_matches_any_of_members() {
+        let module = ParsedModule {
+            path: "Example.ckan".to_string(),
+            identifier: Some("Example".to_string()),
+            name: Some("Example".to_string()),
+            version: Some("1.0".to_string()),
+            spec_version: Some("v1.0".to_string()),
+            abstract_text: None,
+            author_count: 0,
+            license_count: 0,
+            resource_count: 0,
+            install_steps: 0,
+            has_download: false,
+            ksp_version: None,
+            ksp_version_min: None,
+            ksp_version_max: None,
+            dependency_edges: 1,
+            recommendation_edges: 0,
+            suggestion_edges: 0,
+            conflict_edges: 0,
+            provided_identifiers: 0,
+            dependency_names: vec!["FirstOption|SecondOption".to_string()],
+            recommendation_names: Vec::new(),
+            suggestion_names: Vec::new(),
+            conflict_names: Vec::new(),
+            provided_names: Vec::new(),
+        };
+        let mut matches = Vec::new();
+
+        collect_relation_matches(
+            &mut matches,
+            "depends",
+            "secondoption",
+            &module.dependency_names,
+            &module,
+        );
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].target, "FirstOption|SecondOption");
+    }
 }
