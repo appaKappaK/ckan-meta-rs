@@ -10,7 +10,7 @@ use crate::archive::{archive_kind, load_archive, TextEntry};
 use crate::model::{
     clean_string, collection_len, has_text, has_value, value_to_text, BenchReport,
     CompareDifference, CompareReport, IdentifierCount, MinimalModule, ModuleSummary, ParseError,
-    ParseReport, ParsedModule, TimingStats,
+    ParseReport, ParsedModule, RelationMatch, TimingStats,
 };
 
 #[derive(Debug)]
@@ -220,6 +220,60 @@ pub fn find_module_summaries(
     Ok(matches)
 }
 
+pub fn relation_matches(
+    archive: PathBuf,
+    target: &str,
+    limit: Option<usize>,
+) -> Result<Vec<RelationMatch>> {
+    let target_lower = target.to_lowercase();
+    let parsed = parse_archive_details(archive)?;
+    let mut matches = Vec::new();
+
+    for module in &parsed.modules {
+        collect_relation_matches(
+            &mut matches,
+            "depends",
+            &target_lower,
+            &module.dependency_names,
+            module,
+        );
+        collect_relation_matches(
+            &mut matches,
+            "recommends",
+            &target_lower,
+            &module.recommendation_names,
+            module,
+        );
+        collect_relation_matches(
+            &mut matches,
+            "suggests",
+            &target_lower,
+            &module.suggestion_names,
+            module,
+        );
+        collect_relation_matches(
+            &mut matches,
+            "conflicts",
+            &target_lower,
+            &module.conflict_names,
+            module,
+        );
+        collect_relation_matches(
+            &mut matches,
+            "provides",
+            &target_lower,
+            &module.provided_names,
+            module,
+        );
+    }
+
+    if let Some(limit) = limit {
+        matches.truncate(limit);
+    }
+
+    Ok(matches)
+}
+
 pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> {
     let left_parse = parse_archive_details(left)?;
     let right_parse = parse_archive_details(right)?;
@@ -379,6 +433,27 @@ pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> 
         left_only_modules,
         right_only_modules,
     })
+}
+
+fn collect_relation_matches(
+    matches: &mut Vec<RelationMatch>,
+    relationship: &str,
+    target_lower: &str,
+    relation_names: &[String],
+    module: &ParsedModule,
+) {
+    for relation_name in relation_names {
+        if relation_name
+            .split('|')
+            .any(|name| name.eq_ignore_ascii_case(target_lower))
+        {
+            matches.push(RelationMatch {
+                relationship: relationship.to_string(),
+                target: relation_name.clone(),
+                module: ModuleSummary::from(module),
+            });
+        }
+    }
 }
 
 fn module_matches(module: &ParsedModule, query: &str) -> bool {

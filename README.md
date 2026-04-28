@@ -47,6 +47,7 @@ ckan-meta-rs bench /path/to/CKAN-meta-master.zip --json
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
 ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
+ckan-meta-rs relations /path/to/CKAN-meta-master.zip AstronomersVisualPack
 ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 ```
 
@@ -57,6 +58,7 @@ cargo run -- parse /path/to/CKAN-meta-master.zip
 cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
+cargo run -- relations /path/to/CKAN-meta-master.zip TUFX --limit 20
 cargo run -- compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 cargo test
 ```
@@ -140,6 +142,14 @@ Per-module JSON output includes relationship names:
   "conflict_names": ["AVP-Textures"],
   "provided_names": ["AVP-Textures"]
 }
+```
+
+Reverse relationship lookup shows which modules reference a target:
+
+```text
+Relation   Target                           Identifier                       Version          KSP
+depends    AstronomersVisualPack            AVP-4kTextures                   v1.13            1.8+
+recommends TUFX                             AstronomersVisualPack            3:v4.13          1.12.0-1.12.9
 ```
 
 The `compare` command checks that two sources produce the same metadata counts

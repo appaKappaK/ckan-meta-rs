@@ -192,6 +192,13 @@ pub struct ModuleSummary {
     pub provided_names: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct RelationMatch {
+    pub relationship: String,
+    pub target: String,
+    pub module: ModuleSummary,
+}
+
 impl From<&ParsedModule> for ModuleSummary {
     fn from(module: &ParsedModule) -> Self {
         Self {

@@ -8,10 +8,13 @@ mod model;
 mod output;
 mod parser;
 
-use output::{print_bench_report, print_compare_report, print_module_summaries, print_report};
+use output::{
+    print_bench_report, print_compare_report, print_module_summaries, print_relation_matches,
+    print_report,
+};
 use parser::{
     benchmark_archive, compare_archives, find_module_summaries, module_summaries,
-    parse_archive_report,
+    parse_archive_report, relation_matches,
 };
 
 #[derive(Debug, Parser)]
@@ -95,6 +98,27 @@ enum Command {
         limit: Option<usize>,
     },
 
+    /// Show modules that reference a relationship target.
+    Relations {
+        /// Path to a CKAN metadata source.
+        archive: PathBuf,
+
+        /// Relationship target identifier, such as ModuleManager.
+        target: String,
+
+        /// Emit one JSON object per line.
+        #[arg(long)]
+        json_lines: bool,
+
+        /// Emit one pretty-printed JSON array.
+        #[arg(long)]
+        json: bool,
+
+        /// Limit the number of rows emitted.
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+
     /// Compare metadata counts from two archives or directories.
     Compare {
         /// Left CKAN metadata source.
@@ -137,6 +161,13 @@ fn main() -> Result<()> {
             json,
             limit,
         } => find(archive, query, json, json_lines, limit),
+        Command::Relations {
+            archive,
+            target,
+            json_lines,
+            json,
+            limit,
+        } => relations(archive, target, json, json_lines, limit),
         Command::Compare { left, right, json } => compare(left, right, json),
     }
 }
@@ -179,6 +210,17 @@ fn find(
 ) -> Result<()> {
     let modules = find_module_summaries(archive, &query, limit)?;
     print_module_summaries(&modules, json, json_lines)
+}
+
+fn relations(
+    archive: PathBuf,
+    target: String,
+    json: bool,
+    json_lines: bool,
+    limit: Option<usize>,
+) -> Result<()> {
+    let matches = relation_matches(archive, &target, limit)?;
+    print_relation_matches(&matches, json, json_lines)
 }
 
 fn compare(left: PathBuf, right: PathBuf, json: bool) -> Result<()> {

@@ -1,6 +1,8 @@
 use anyhow::Result;
 
-use crate::model::{BenchReport, CompareReport, ModuleSummary, ParseReport, TimingStats};
+use crate::model::{
+    BenchReport, CompareReport, ModuleSummary, ParseReport, RelationMatch, TimingStats,
+};
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
     println!("Archive: {}", report.archive);
@@ -141,6 +143,24 @@ pub fn print_compare_report(report: &CompareReport) {
     }
 }
 
+pub fn print_relation_matches(
+    matches: &[RelationMatch],
+    json: bool,
+    json_lines: bool,
+) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(matches)?);
+    } else if json_lines {
+        for item in matches {
+            println!("{}", serde_json::to_string(item)?);
+        }
+    } else {
+        print_relation_table(matches);
+    }
+
+    Ok(())
+}
+
 fn print_module_table(modules: &[ModuleSummary]) {
     println!(
         "{:<32} {:<16} {:>3} {:>3} {:>3} {:>3} {:>3} {:<13}",
@@ -157,6 +177,23 @@ fn print_module_table(modules: &[ModuleSummary]) {
             module.conflict_edges,
             module.install_steps,
             truncate(ksp_compat(module).as_str(), 13)
+        );
+    }
+}
+
+fn print_relation_table(matches: &[RelationMatch]) {
+    println!(
+        "{:<10} {:<32} {:<32} {:<16} {:<13}",
+        "Relation", "Target", "Identifier", "Version", "KSP"
+    );
+    for item in matches {
+        println!(
+            "{:<10} {:<32} {:<32} {:<16} {:<13}",
+            item.relationship,
+            truncate(&item.target, 32),
+            truncate(item.module.identifier.as_deref().unwrap_or("-"), 32),
+            truncate(item.module.version.as_deref().unwrap_or("-"), 16),
+            truncate(ksp_compat(&item.module).as_str(), 13)
         );
     }
 }
