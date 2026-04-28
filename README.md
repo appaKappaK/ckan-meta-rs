@@ -48,6 +48,7 @@ ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
 ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
 ckan-meta-rs relations /path/to/CKAN-meta-master.zip AstronomersVisualPack
+ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AVP-4kTextures --version v1.13
 ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 ```
 
@@ -59,6 +60,7 @@ cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
 cargo run -- relations /path/to/CKAN-meta-master.zip TUFX --limit 20
+cargo run -- inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --version 3:v4.13
 cargo run -- compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 cargo test
 ```
@@ -150,6 +152,24 @@ Reverse relationship lookup shows which modules reference a target:
 Relation   Target                           Identifier                       Version          KSP
 depends    AstronomersVisualPack            AVP-4kTextures                   v1.13            1.8+
 recommends TUFX                             AstronomersVisualPack            3:v4.13          1.12.0-1.12.9
+```
+
+`inspect` combines exact module matches with reverse relationships to the
+identifier and virtual identifiers that matched modules provide:
+
+```text
+Query: AVP-4kTextures
+Version: v1.13
+Relationship targets: AVP-4kTextures, AVP-Textures
+
+Matched modules:
+Identifier                       Version          Dep Rec Sug Con Ins KSP
+AVP-4kTextures                   v1.13              1   0   0   1   1 1.8+
+
+Reverse relationships:
+Relation   Target                           Identifier                       Version          KSP
+conflicts  AVP-Textures                     AVP-2kTextures                   v1.13            1.8+
+provides   AVP-Textures                     AVP-2kTextures                   v1.13            1.8+
 ```
 
 The `compare` command checks that two sources produce the same metadata counts

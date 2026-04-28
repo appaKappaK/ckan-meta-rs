@@ -199,6 +199,15 @@ pub struct RelationMatch {
     pub module: ModuleSummary,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ModuleInspection {
+    pub query: String,
+    pub version: Option<String>,
+    pub relationship_targets: Vec<String>,
+    pub modules: Vec<ModuleSummary>,
+    pub reverse_relationships: Vec<RelationMatch>,
+}
+
 impl From<&ParsedModule> for ModuleSummary {
     fn from(module: &ParsedModule) -> Self {
         Self {

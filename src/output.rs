@@ -1,7 +1,8 @@
 use anyhow::Result;
 
 use crate::model::{
-    BenchReport, CompareReport, ModuleSummary, ParseReport, RelationMatch, TimingStats,
+    BenchReport, CompareReport, ModuleInspection, ModuleSummary, ParseReport, RelationMatch,
+    TimingStats,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -157,6 +158,32 @@ pub fn print_relation_matches(
     } else {
         print_relation_table(matches);
     }
+
+    Ok(())
+}
+
+pub fn print_module_inspection(report: &ModuleInspection, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Query: {}", report.query);
+    if let Some(version) = report.version.as_ref() {
+        println!("Version: {version}");
+    }
+    println!(
+        "Relationship targets: {}",
+        report.relationship_targets.join(", ")
+    );
+
+    println!();
+    println!("Matched modules:");
+    print_module_table(&report.modules);
+
+    println!();
+    println!("Reverse relationships:");
+    print_relation_table(&report.reverse_relationships);
 
     Ok(())
 }

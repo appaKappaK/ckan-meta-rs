@@ -9,11 +9,11 @@ mod output;
 mod parser;
 
 use output::{
-    print_bench_report, print_compare_report, print_module_summaries, print_relation_matches,
-    print_report,
+    print_bench_report, print_compare_report, print_module_inspection, print_module_summaries,
+    print_relation_matches, print_report,
 };
 use parser::{
-    benchmark_archive, compare_archives, find_module_summaries, module_summaries,
+    benchmark_archive, compare_archives, find_module_summaries, inspect_module, module_summaries,
     parse_archive_report, relation_matches,
 };
 
@@ -119,6 +119,31 @@ enum Command {
         limit: Option<usize>,
     },
 
+    /// Inspect a module and reverse relationships to it.
+    Inspect {
+        /// Path to a CKAN metadata source.
+        archive: PathBuf,
+
+        /// Exact module identifier to inspect.
+        identifier: String,
+
+        /// Exact version to inspect.
+        #[arg(long)]
+        version: Option<String>,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
+
+        /// Limit the number of matched module rows.
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Limit the number of reverse relationship rows.
+        #[arg(long)]
+        reverse_limit: Option<usize>,
+    },
+
     /// Compare metadata counts from two archives or directories.
     Compare {
         /// Left CKAN metadata source.
@@ -168,6 +193,14 @@ fn main() -> Result<()> {
             json,
             limit,
         } => relations(archive, target, json, json_lines, limit),
+        Command::Inspect {
+            archive,
+            identifier,
+            version,
+            json,
+            limit,
+            reverse_limit,
+        } => inspect(archive, identifier, version, json, limit, reverse_limit),
         Command::Compare { left, right, json } => compare(left, right, json),
     }
 }
@@ -221,6 +254,24 @@ fn relations(
 ) -> Result<()> {
     let matches = relation_matches(archive, &target, limit)?;
     print_relation_matches(&matches, json, json_lines)
+}
+
+fn inspect(
+    archive: PathBuf,
+    identifier: String,
+    version: Option<String>,
+    json: bool,
+    limit: Option<usize>,
+    reverse_limit: Option<usize>,
+) -> Result<()> {
+    let report = inspect_module(
+        archive,
+        &identifier,
+        version.as_deref(),
+        limit,
+        reverse_limit,
+    )?;
+    print_module_inspection(&report, json)
 }
 
 fn compare(left: PathBuf, right: PathBuf, json: bool) -> Result<()> {

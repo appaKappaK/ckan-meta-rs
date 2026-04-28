@@ -9,8 +9,8 @@ use serde_json::Value;
 use crate::archive::{archive_kind, load_archive, TextEntry};
 use crate::model::{
     clean_string, collection_len, has_text, has_value, value_to_text, BenchReport,
-    CompareDifference, CompareReport, IdentifierCount, MinimalModule, ModuleSummary, ParseError,
-    ParseReport, ParsedModule, RelationMatch, TimingStats,
+    CompareDifference, CompareReport, IdentifierCount, MinimalModule, ModuleInspection,
+    ModuleSummary, ParseError, ParseReport, ParsedModule, RelationMatch, TimingStats,
 };
 
 #[derive(Debug)]
@@ -228,41 +228,7 @@ pub fn relation_matches(
     let mut matches = Vec::new();
 
     for module in &parsed.modules {
-        collect_relation_matches(
-            &mut matches,
-            "depends",
-            &target_lower,
-            &module.dependency_names,
-            module,
-        );
-        collect_relation_matches(
-            &mut matches,
-            "recommends",
-            &target_lower,
-            &module.recommendation_names,
-            module,
-        );
-        collect_relation_matches(
-            &mut matches,
-            "suggests",
-            &target_lower,
-            &module.suggestion_names,
-            module,
-        );
-        collect_relation_matches(
-            &mut matches,
-            "conflicts",
-            &target_lower,
-            &module.conflict_names,
-            module,
-        );
-        collect_relation_matches(
-            &mut matches,
-            "provides",
-            &target_lower,
-            &module.provided_names,
-            module,
-        );
+        collect_module_relation_matches(&mut matches, module, &[target_lower.as_str()]);
     }
 
     if let Some(limit) = limit {
@@ -270,6 +236,57 @@ pub fn relation_matches(
     }
 
     Ok(matches)
+}
+
+pub fn inspect_module(
+    archive: PathBuf,
+    identifier: &str,
+    version: Option<&str>,
+    limit: Option<usize>,
+    reverse_limit: Option<usize>,
+) -> Result<ModuleInspection> {
+    let parsed = parse_archive_details(archive)?;
+    let mut modules = parsed
+        .modules
+        .iter()
+        .filter(|module| identifier_matches(module, identifier))
+        .filter(|module| version.is_none_or(|version| module.version.as_deref() == Some(version)))
+        .collect::<Vec<_>>();
+
+    if let Some(limit) = limit {
+        modules.truncate(limit);
+    }
+
+    let mut relationship_targets = BTreeSet::from([identifier.to_string()]);
+    for module in &modules {
+        relationship_targets.extend(module.provided_names.iter().cloned());
+    }
+
+    let target_lowers = relationship_targets
+        .iter()
+        .map(|target| target.to_lowercase())
+        .collect::<Vec<_>>();
+    let target_refs = target_lowers.iter().map(String::as_str).collect::<Vec<_>>();
+
+    let mut reverse_relationships = Vec::new();
+    for module in &parsed.modules {
+        collect_module_relation_matches(&mut reverse_relationships, module, &target_refs);
+    }
+
+    if let Some(limit) = reverse_limit {
+        reverse_relationships.truncate(limit);
+    }
+
+    Ok(ModuleInspection {
+        query: identifier.to_string(),
+        version: version.map(str::to_string),
+        relationship_targets: relationship_targets.into_iter().collect(),
+        modules: modules
+            .into_iter()
+            .map(ModuleSummary::from)
+            .collect::<Vec<_>>(),
+        reverse_relationships,
+    })
 }
 
 pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> {
@@ -433,18 +450,69 @@ pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> 
     })
 }
 
+fn collect_module_relation_matches(
+    matches: &mut Vec<RelationMatch>,
+    module: &ParsedModule,
+    target_lowers: &[&str],
+) {
+    collect_relation_matches(
+        matches,
+        "depends",
+        target_lowers,
+        &module.dependency_names,
+        module,
+    );
+    collect_relation_matches(
+        matches,
+        "recommends",
+        target_lowers,
+        &module.recommendation_names,
+        module,
+    );
+    collect_relation_matches(
+        matches,
+        "suggests",
+        target_lowers,
+        &module.suggestion_names,
+        module,
+    );
+    collect_relation_matches(
+        matches,
+        "conflicts",
+        target_lowers,
+        &module.conflict_names,
+        module,
+    );
+    collect_relation_matches(
+        matches,
+        "provides",
+        target_lowers,
+        &module.provided_names,
+        module,
+    );
+}
+
 fn collect_relation_matches(
     matches: &mut Vec<RelationMatch>,
     relationship: &str,
-    target_lower: &str,
+    target_lowers: &[&str],
     relation_names: &[String],
     module: &ParsedModule,
 ) {
     for relation_name in relation_names {
-        if relation_name
-            .split('|')
-            .any(|name| name.eq_ignore_ascii_case(target_lower))
-        {
+        if target_lowers.iter().any(|target_lower| {
+            relation_name
+                .split('|')
+                .any(|name| name.eq_ignore_ascii_case(target_lower))
+        }) {
+            if matches.iter().any(|existing| {
+                existing.relationship == relationship
+                    && existing.target == *relation_name
+                    && existing.module.path == module.path
+            }) {
+                continue;
+            }
+
             matches.push(RelationMatch {
                 relationship: relationship.to_string(),
                 target: relation_name.clone(),
@@ -452,6 +520,13 @@ fn collect_relation_matches(
             });
         }
     }
+}
+
+fn identifier_matches(module: &ParsedModule, identifier: &str) -> bool {
+    module
+        .identifier
+        .as_deref()
+        .is_some_and(|value| value.eq_ignore_ascii_case(identifier))
 }
 
 fn module_matches(module: &ParsedModule, query: &str) -> bool {
@@ -818,7 +893,7 @@ mod tests {
         collect_relation_matches(
             &mut matches,
             "depends",
-            "secondoption",
+            &["secondoption"],
             &module.dependency_names,
             &module,
         );
