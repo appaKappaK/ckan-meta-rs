@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ExtractionReport {
+    pub source: String,
+    pub destination: String,
+    pub archive_kind: String,
+    pub archive_entries: usize,
+    pub relevant_entries: usize,
+    pub bytes_written: u64,
+    pub elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ParseReport {
     pub archive: String,
     pub archive_kind: String,

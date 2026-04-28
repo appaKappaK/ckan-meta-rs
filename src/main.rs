@@ -8,9 +8,11 @@ mod model;
 mod output;
 mod parser;
 
+use archive::extract_relevant_entries;
 use output::{
-    print_bench_report, print_compare_report, print_module_inspection, print_module_summaries,
-    print_relation_matches, print_relation_stats, print_report, write_export_package,
+    print_bench_report, print_compare_report, print_extraction_report, print_module_inspection,
+    print_module_summaries, print_relation_matches, print_relation_stats, print_report,
+    write_export_package,
 };
 use parser::{
     benchmark_archive, compare_archives, export_package, find_module_summaries, inspect_module,
@@ -89,6 +91,31 @@ enum Command {
         /// Emit one module JSON object per line instead of a package object.
         #[arg(long)]
         json_lines: bool,
+    },
+
+    /// Extract relevant metadata files into a persistent cache directory.
+    Cache {
+        /// Path to a CKAN metadata .zip, .tar.gz archive, or source directory.
+        archive: PathBuf,
+
+        /// Destination cache directory.
+        cache_dir: PathBuf,
+
+        /// Remove the cache directory before extracting.
+        #[arg(long)]
+        clean: bool,
+
+        /// Optional export file to write after cache extraction.
+        #[arg(long)]
+        export: Option<PathBuf>,
+
+        /// Write export as JSON lines instead of a package object.
+        #[arg(long)]
+        json_lines: bool,
+
+        /// Emit machine-readable extraction JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Search module summaries by identifier, name, or version.
@@ -216,6 +243,14 @@ fn main() -> Result<()> {
             output,
             json_lines,
         } => export(archive, output, json_lines),
+        Command::Cache {
+            archive,
+            cache_dir,
+            clean,
+            export,
+            json_lines,
+            json,
+        } => cache(archive, cache_dir, clean, export, json_lines, json),
         Command::Find {
             archive,
             query,
@@ -288,6 +323,29 @@ fn modules(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>)
 fn export(archive: PathBuf, output: PathBuf, json_lines: bool) -> Result<()> {
     let package = export_package(archive)?;
     write_export_package(&package, &output, json_lines)
+}
+
+fn cache(
+    archive: PathBuf,
+    cache_dir: PathBuf,
+    clean: bool,
+    export: Option<PathBuf>,
+    json_lines: bool,
+    json: bool,
+) -> Result<()> {
+    let report = extract_relevant_entries(&archive, &cache_dir, clean)?;
+    if let Some(output) = export {
+        let package = export_package(cache_dir.clone())?;
+        write_export_package(&package, &output, json_lines)?;
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_extraction_report(&report);
+    }
+
+    Ok(())
 }
 
 fn find(

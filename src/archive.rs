@@ -1,6 +1,6 @@
 use std::fs::{self, File};
-use std::io::Read;
-use std::path::Path;
+use std::io::{self, Read};
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
@@ -8,6 +8,8 @@ use flate2::read::GzDecoder;
 use rayon::prelude::*;
 use tar::Archive;
 use zip::ZipArchive;
+
+use crate::model::ExtractionReport;
 
 #[derive(Debug, Clone)]
 pub struct TextEntry {
@@ -58,6 +60,35 @@ pub fn load_archive(path: &Path, kind: &str) -> Result<ArchiveLoad> {
     }
 }
 
+pub fn extract_relevant_entries(
+    source: &Path,
+    destination: &Path,
+    clean: bool,
+) -> Result<ExtractionReport> {
+    if clean && destination.exists() {
+        fs::remove_dir_all(destination)
+            .with_context(|| format!("failed to clean {}", destination.display()))?;
+    }
+    fs::create_dir_all(destination)
+        .with_context(|| format!("failed to create {}", destination.display()))?;
+
+    let started = Instant::now();
+    let kind = archive_kind(source)?;
+    let mut report = match kind {
+        "zip" => extract_zip(source, destination)?,
+        "tar.gz" => extract_tar_gz(source, destination)?,
+        "directory" => extract_directory(source, destination)?,
+        _ => bail!("unsupported archive type: {kind}"),
+    };
+
+    report.source = source.display().to_string();
+    report.destination = destination.display().to_string();
+    report.archive_kind = kind.to_string();
+    report.elapsed_ms = started.elapsed().as_millis();
+
+    Ok(report)
+}
+
 fn load_zip(path: &Path) -> Result<ArchiveLoad> {
     let started = Instant::now();
     let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
@@ -89,6 +120,47 @@ fn load_zip(path: &Path) -> Result<ArchiveLoad> {
         entries,
         bytes_read,
         elapsed: started.elapsed(),
+    })
+}
+
+fn extract_zip(source: &Path, destination: &Path) -> Result<ExtractionReport> {
+    let file =
+        File::open(source).with_context(|| format!("failed to open {}", source.display()))?;
+    let mut archive = ZipArchive::new(file)
+        .with_context(|| format!("failed to read zip archive {}", source.display()))?;
+    let archive_entries = archive.len();
+    let mut relevant_entries = 0;
+    let mut bytes_written = 0;
+
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index)?;
+        if file.is_dir() {
+            continue;
+        }
+
+        let name = file.name().to_string();
+        if !is_relevant_entry(&name) {
+            continue;
+        }
+
+        let destination_path = safe_destination(destination, &name)?;
+        if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let mut output = File::create(&destination_path)?;
+        bytes_written += io::copy(&mut file, &mut output)?;
+        relevant_entries += 1;
+    }
+
+    Ok(ExtractionReport {
+        source: String::new(),
+        destination: String::new(),
+        archive_kind: String::new(),
+        archive_entries,
+        relevant_entries,
+        bytes_written,
+        elapsed_ms: 0,
     })
 }
 
@@ -126,6 +198,48 @@ fn load_tar_gz(path: &Path) -> Result<ArchiveLoad> {
     })
 }
 
+fn extract_tar_gz(source: &Path, destination: &Path) -> Result<ExtractionReport> {
+    let file =
+        File::open(source).with_context(|| format!("failed to open {}", source.display()))?;
+    let decoder = GzDecoder::new(file);
+    let mut archive = Archive::new(decoder);
+    let mut archive_entries = 0;
+    let mut relevant_entries = 0;
+    let mut bytes_written = 0;
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        archive_entries += 1;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path()?.to_string_lossy().to_string();
+        if !is_relevant_entry(&path) {
+            continue;
+        }
+
+        let destination_path = safe_destination(destination, &path)?;
+        if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let mut output = File::create(&destination_path)?;
+        bytes_written += io::copy(&mut entry, &mut output)?;
+        relevant_entries += 1;
+    }
+
+    Ok(ExtractionReport {
+        source: String::new(),
+        destination: String::new(),
+        archive_kind: String::new(),
+        archive_entries,
+        relevant_entries,
+        bytes_written,
+        elapsed_ms: 0,
+    })
+}
+
 fn load_directory(path: &Path) -> Result<ArchiveLoad> {
     let started = Instant::now();
     let mut archive_entries = 0;
@@ -151,6 +265,35 @@ fn load_directory(path: &Path) -> Result<ArchiveLoad> {
         entries,
         bytes_read,
         elapsed: started.elapsed(),
+    })
+}
+
+fn extract_directory(source: &Path, destination: &Path) -> Result<ExtractionReport> {
+    let mut archive_entries = 0;
+    let mut relevant_files = Vec::new();
+    collect_directory_entries(source, source, &mut archive_entries, &mut relevant_files)?;
+
+    let mut relevant_entries = 0;
+    let mut bytes_written = 0;
+    for file in relevant_files {
+        let destination_path = safe_destination(destination, &file.relative)?;
+        if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::copy(&file.path, &destination_path)?;
+        bytes_written += file.len;
+        relevant_entries += 1;
+    }
+
+    Ok(ExtractionReport {
+        source: String::new(),
+        destination: String::new(),
+        archive_kind: String::new(),
+        archive_entries,
+        relevant_entries,
+        bytes_written,
+        elapsed_ms: 0,
     })
 }
 
@@ -201,4 +344,29 @@ pub fn is_relevant_entry(path: &str) -> bool {
         || path.ends_with("download_counts.json")
         || path.ends_with("builds.json")
         || path.ends_with("repositories.json")
+}
+
+fn safe_destination(root: &Path, archive_path: &str) -> Result<PathBuf> {
+    let components = archive_path
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+
+    let mut relative = PathBuf::new();
+    for part in components {
+        let path = Path::new(part);
+        if path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+        {
+            bail!("unsafe archive path: {archive_path}");
+        }
+        relative.push(path);
+    }
+
+    if relative.as_os_str().is_empty() {
+        bail!("empty archive path: {archive_path}");
+    }
+
+    Ok(root.join(relative))
 }

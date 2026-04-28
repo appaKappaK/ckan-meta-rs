@@ -5,8 +5,8 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::model::{
-    BenchReport, CompareReport, ExportPackage, ModuleInspection, ModuleSummary, ParseReport,
-    RelationMatch, RelationStatsReport, TimingStats,
+    BenchReport, CompareReport, ExportPackage, ExtractionReport, ModuleInspection, ModuleSummary,
+    ParseReport, RelationMatch, RelationStatsReport, TimingStats,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -72,6 +72,16 @@ pub fn print_report(report: &ParseReport, max_errors: usize) {
             println!("  {}: {}", error.path, error.error);
         }
     }
+}
+
+pub fn print_extraction_report(report: &ExtractionReport) {
+    println!("Source: {}", report.source);
+    println!("Destination: {}", report.destination);
+    println!("Type: {}", report.archive_kind);
+    println!("Archive entries: {}", report.archive_entries);
+    println!("Relevant entries: {}", report.relevant_entries);
+    println!("Bytes written: {}", report.bytes_written);
+    println!("Timing: extract={}ms", report.elapsed_ms);
 }
 
 pub fn print_bench_report(report: &BenchReport) {
