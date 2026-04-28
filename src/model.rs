@@ -222,6 +222,14 @@ pub struct ModuleInspection {
     pub reverse_relationships: Vec<RelationMatch>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportPackage {
+    pub schema_version: u32,
+    pub source: String,
+    pub report: ParseReport,
+    pub modules: Vec<ModuleSummary>,
+}
+
 impl From<&ParsedModule> for ModuleSummary {
     fn from(module: &ParsedModule) -> Self {
         Self {

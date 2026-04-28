@@ -10,9 +10,9 @@ use serde_json::Value;
 use crate::archive::{archive_kind, load_archive, TextEntry};
 use crate::model::{
     clean_string, collection_len, has_text, has_value, value_to_text, BenchReport,
-    CompareDifference, CompareReport, IdentifierCount, MinimalModule, ModuleInspection,
-    ModuleSummary, ParseError, ParseReport, ParsedModule, RelationMatch, RelationStatsReport,
-    RelationTargetCount, TimingStats,
+    CompareDifference, CompareReport, ExportPackage, IdentifierCount, MinimalModule,
+    ModuleInspection, ModuleSummary, ParseError, ParseReport, ParsedModule, RelationMatch,
+    RelationStatsReport, RelationTargetCount, TimingStats,
 };
 
 #[derive(Debug)]
@@ -197,6 +197,22 @@ pub fn module_summaries(archive: PathBuf, limit: Option<usize>) -> Result<Vec<Mo
     }
 
     Ok(modules.iter().map(ModuleSummary::from).collect::<Vec<_>>())
+}
+
+pub fn export_package(archive: PathBuf) -> Result<ExportPackage> {
+    let parsed = parse_archive_details(archive)?;
+    let modules = parsed
+        .modules
+        .iter()
+        .map(ModuleSummary::from)
+        .collect::<Vec<_>>();
+
+    Ok(ExportPackage {
+        schema_version: 1,
+        source: parsed.report.archive.clone(),
+        report: parsed.report,
+        modules,
+    })
 }
 
 pub fn find_module_summaries(

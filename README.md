@@ -46,6 +46,8 @@ ckan-meta-rs bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 ckan-meta-rs bench /path/to/CKAN-meta-master.zip --json
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
+ckan-meta-rs export /path/to/CKAN-meta-master.zip --output summary.json
+ckan-meta-rs export /path/to/CKAN-meta-master.zip --output modules.jsonl --json-lines
 ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
 ckan-meta-rs relations /path/to/CKAN-meta-master.zip AstronomersVisualPack
 ckan-meta-rs relation-stats /path/to/CKAN-meta-master.zip --limit 15
@@ -60,6 +62,7 @@ During development:
 cargo run -- parse /path/to/CKAN-meta-master.zip
 cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
+cargo run -- export /path/to/CKAN-meta-master.zip --output summary.json
 cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
 cargo run -- relations /path/to/CKAN-meta-master.zip TUFX --limit 20
 cargo run -- relation-stats /path/to/CKAN-meta-master.zip --limit 15
@@ -213,6 +216,10 @@ This tool is intentionally read-only. It does not install mods, write CKAN
 registries, or claim CKAN-compatible semantics yet. The first useful benchmark
 is raw archive and JSON throughput compared with CKAN's existing
 `RepositoryData.FromStream(...)` path.
+
+The `export` command is the intended CKAN-Linux bridge. Package JSON includes
+`schema_version`, aggregate report data, and all module summaries. JSON-lines
+mode writes one module summary per line for streaming consumers.
 
 ## Next Steps
 

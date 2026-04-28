@@ -10,11 +10,11 @@ mod parser;
 
 use output::{
     print_bench_report, print_compare_report, print_module_inspection, print_module_summaries,
-    print_relation_matches, print_relation_stats, print_report,
+    print_relation_matches, print_relation_stats, print_report, write_export_package,
 };
 use parser::{
-    benchmark_archive, compare_archives, find_module_summaries, inspect_module, module_summaries,
-    parse_archive_report, relation_matches, relation_stats,
+    benchmark_archive, compare_archives, export_package, find_module_summaries, inspect_module,
+    module_summaries, parse_archive_report, relation_matches, relation_stats,
 };
 
 #[derive(Debug, Parser)]
@@ -75,6 +75,20 @@ enum Command {
         /// Limit the number of module rows emitted.
         #[arg(long)]
         limit: Option<usize>,
+    },
+
+    /// Export a stable module summary file.
+    Export {
+        /// Path to a CKAN metadata source.
+        archive: PathBuf,
+
+        /// Output file path, or '-' for stdout.
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Emit one module JSON object per line instead of a package object.
+        #[arg(long)]
+        json_lines: bool,
     },
 
     /// Search module summaries by identifier, name, or version.
@@ -197,6 +211,11 @@ fn main() -> Result<()> {
             json,
             limit,
         } => modules(archive, json, json_lines, limit),
+        Command::Export {
+            archive,
+            output,
+            json_lines,
+        } => export(archive, output, json_lines),
         Command::Find {
             archive,
             query,
@@ -264,6 +283,11 @@ fn bench(archive: PathBuf, runs: usize, warmups: usize, json: bool) -> Result<()
 fn modules(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>) -> Result<()> {
     let modules = module_summaries(archive, limit)?;
     print_module_summaries(&modules, json, json_lines)
+}
+
+fn export(archive: PathBuf, output: PathBuf, json_lines: bool) -> Result<()> {
+    let package = export_package(archive)?;
+    write_export_package(&package, &output, json_lines)
 }
 
 fn find(

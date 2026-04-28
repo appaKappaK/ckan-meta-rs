@@ -1,8 +1,12 @@
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
+use std::path::Path;
+
 use anyhow::Result;
 
 use crate::model::{
-    BenchReport, CompareReport, ModuleInspection, ModuleSummary, ParseReport, RelationMatch,
-    RelationStatsReport, TimingStats,
+    BenchReport, CompareReport, ExportPackage, ModuleInspection, ModuleSummary, ParseReport,
+    RelationMatch, RelationStatsReport, TimingStats,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -108,6 +112,32 @@ pub fn print_module_summaries(
         print_module_table(modules);
     }
 
+    Ok(())
+}
+
+pub fn write_export_package(
+    package: &ExportPackage,
+    output: &Path,
+    json_lines: bool,
+) -> Result<()> {
+    let writer: Box<dyn Write> = if output == Path::new("-") {
+        Box::new(io::stdout().lock())
+    } else {
+        Box::new(File::create(output)?)
+    };
+    let mut writer = BufWriter::new(writer);
+
+    if json_lines {
+        for module in &package.modules {
+            serde_json::to_writer(&mut writer, module)?;
+            writeln!(writer)?;
+        }
+    } else {
+        serde_json::to_writer_pretty(&mut writer, package)?;
+        writeln!(writer)?;
+    }
+
+    writer.flush()?;
     Ok(())
 }
 
