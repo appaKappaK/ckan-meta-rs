@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::model::{BenchReport, ModuleSummary, ParseReport, TimingStats};
+use crate::model::{BenchReport, CompareReport, ModuleSummary, ParseReport, TimingStats};
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
     println!("Archive: {}", report.archive);
@@ -106,6 +106,23 @@ pub fn print_module_summaries(
     }
 
     Ok(())
+}
+
+pub fn print_compare_report(report: &CompareReport) {
+    println!("Left: {}", report.left);
+    println!("Right: {}", report.right);
+    println!("Matching: {}", report.matching);
+
+    if !report.differences.is_empty() {
+        println!();
+        println!("{:<28} {:>16} {:>16}", "Field", "Left", "Right");
+        for difference in &report.differences {
+            println!(
+                "{:<28} {:>16} {:>16}",
+                difference.field, difference.left, difference.right
+            );
+        }
+    }
 }
 
 fn print_module_table(modules: &[ModuleSummary]) {

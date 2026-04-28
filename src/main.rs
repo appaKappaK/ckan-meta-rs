@@ -8,8 +8,8 @@ mod model;
 mod output;
 mod parser;
 
-use output::{print_bench_report, print_module_summaries, print_report};
-use parser::{benchmark_archive, module_summaries, parse_archive_report};
+use output::{print_bench_report, print_compare_report, print_module_summaries, print_report};
+use parser::{benchmark_archive, compare_archives, module_summaries, parse_archive_report};
 
 #[derive(Debug, Parser)]
 #[command(name = "ckan-meta-rs")]
@@ -70,6 +70,19 @@ enum Command {
         #[arg(long)]
         limit: Option<usize>,
     },
+
+    /// Compare metadata counts from two archives or directories.
+    Compare {
+        /// Left CKAN metadata source.
+        left: PathBuf,
+
+        /// Right CKAN metadata source.
+        right: PathBuf,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -93,6 +106,7 @@ fn main() -> Result<()> {
             json,
             limit,
         } => modules(archive, json, json_lines, limit),
+        Command::Compare { left, right, json } => compare(left, right, json),
     }
 }
 
@@ -123,4 +137,16 @@ fn bench(archive: PathBuf, runs: usize, warmups: usize, json: bool) -> Result<()
 fn modules(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>) -> Result<()> {
     let modules = module_summaries(archive, limit)?;
     print_module_summaries(&modules, json, json_lines)
+}
+
+fn compare(left: PathBuf, right: PathBuf, json: bool) -> Result<()> {
+    let report = compare_archives(left, right)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_compare_report(&report);
+    }
+
+    Ok(())
 }

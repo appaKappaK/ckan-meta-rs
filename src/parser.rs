@@ -8,8 +8,9 @@ use serde_json::Value;
 
 use crate::archive::{archive_kind, load_archive, TextEntry};
 use crate::model::{
-    clean_string, collection_len, has_text, has_value, value_to_text, BenchReport, IdentifierCount,
-    MinimalModule, ModuleSummary, ParseError, ParseReport, ParsedModule, TimingStats,
+    clean_string, collection_len, has_text, has_value, value_to_text, BenchReport,
+    CompareDifference, CompareReport, IdentifierCount, MinimalModule, ModuleSummary, ParseError,
+    ParseReport, ParsedModule, TimingStats,
 };
 
 #[derive(Debug)]
@@ -198,6 +199,134 @@ pub fn module_summaries(archive: PathBuf, limit: Option<usize>) -> Result<Vec<Mo
     Ok(modules.iter().map(ModuleSummary::from).collect::<Vec<_>>())
 }
 
+pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> {
+    let left_report = parse_archive_report(left)?;
+    let right_report = parse_archive_report(right)?;
+    let mut differences = Vec::new();
+
+    compare_value(
+        &mut differences,
+        "relevant_entries",
+        left_report.relevant_entries,
+        right_report.relevant_entries,
+    );
+    compare_value(
+        &mut differences,
+        "ckan_entries",
+        left_report.ckan_entries,
+        right_report.ckan_entries,
+    );
+    compare_value(
+        &mut differences,
+        "parsed_modules",
+        left_report.parsed_modules,
+        right_report.parsed_modules,
+    );
+    compare_value(
+        &mut differences,
+        "unique_identifiers",
+        left_report.unique_identifiers,
+        right_report.unique_identifiers,
+    );
+    compare_value(
+        &mut differences,
+        "duplicate_identifiers",
+        left_report.duplicate_identifiers,
+        right_report.duplicate_identifiers,
+    );
+    compare_value(
+        &mut differences,
+        "missing_identifier",
+        left_report.missing_identifier,
+        right_report.missing_identifier,
+    );
+    compare_value(
+        &mut differences,
+        "dependency_edges",
+        left_report.dependency_edges,
+        right_report.dependency_edges,
+    );
+    compare_value(
+        &mut differences,
+        "recommendation_edges",
+        left_report.recommendation_edges,
+        right_report.recommendation_edges,
+    );
+    compare_value(
+        &mut differences,
+        "suggestion_edges",
+        left_report.suggestion_edges,
+        right_report.suggestion_edges,
+    );
+    compare_value(
+        &mut differences,
+        "conflict_edges",
+        left_report.conflict_edges,
+        right_report.conflict_edges,
+    );
+    compare_value(
+        &mut differences,
+        "provided_identifiers",
+        left_report.provided_identifiers,
+        right_report.provided_identifiers,
+    );
+    compare_value(
+        &mut differences,
+        "modules_with_install",
+        left_report.modules_with_install,
+        right_report.modules_with_install,
+    );
+    compare_value(
+        &mut differences,
+        "modules_with_resources",
+        left_report.modules_with_resources,
+        right_report.modules_with_resources,
+    );
+    compare_value(
+        &mut differences,
+        "modules_with_download",
+        left_report.modules_with_download,
+        right_report.modules_with_download,
+    );
+    compare_value(
+        &mut differences,
+        "parse_errors",
+        left_report.parse_errors,
+        right_report.parse_errors,
+    );
+    compare_option(
+        &mut differences,
+        "download_counts",
+        left_report.download_counts,
+        right_report.download_counts,
+    );
+    compare_option(
+        &mut differences,
+        "builds",
+        left_report.builds,
+        right_report.builds,
+    );
+    compare_option(
+        &mut differences,
+        "repositories",
+        left_report.repositories,
+        right_report.repositories,
+    );
+    compare_value(
+        &mut differences,
+        "bytes_read",
+        left_report.bytes_read,
+        right_report.bytes_read,
+    );
+
+    Ok(CompareReport {
+        left: left_report.archive,
+        right: right_report.archive,
+        matching: differences.is_empty(),
+        differences,
+    })
+}
+
 fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
     let raw =
         serde_json::from_str::<MinimalModule>(&entry.contents).map_err(|error| ParseError {
@@ -288,6 +417,45 @@ fn identifier_counts(modules: &[ParsedModule]) -> Vec<(usize, String)> {
 
 fn sum_module_count(modules: &[ParsedModule], count: impl Fn(&ParsedModule) -> usize) -> usize {
     modules.iter().map(count).sum()
+}
+
+fn compare_value<T>(differences: &mut Vec<CompareDifference>, field: &str, left: T, right: T)
+where
+    T: std::fmt::Display + PartialEq,
+{
+    if left != right {
+        differences.push(CompareDifference {
+            field: field.to_string(),
+            left: left.to_string(),
+            right: right.to_string(),
+        });
+    }
+}
+
+fn compare_option<T>(
+    differences: &mut Vec<CompareDifference>,
+    field: &str,
+    left: Option<T>,
+    right: Option<T>,
+) where
+    T: std::fmt::Display + PartialEq,
+{
+    if left != right {
+        differences.push(CompareDifference {
+            field: field.to_string(),
+            left: format_optional(left),
+            right: format_optional(right),
+        });
+    }
+}
+
+fn format_optional<T>(value: Option<T>) -> String
+where
+    T: std::fmt::Display,
+{
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
 }
 
 #[cfg(test)]

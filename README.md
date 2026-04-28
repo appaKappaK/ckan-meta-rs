@@ -46,6 +46,7 @@ ckan-meta-rs bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 ckan-meta-rs bench /path/to/CKAN-meta-master.zip --json
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
+ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 ```
 
 During development:
@@ -54,6 +55,7 @@ During development:
 cargo run -- parse /path/to/CKAN-meta-master.zip
 cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
+cargo run -- compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 cargo test
 ```
 
@@ -124,6 +126,14 @@ Timing statistics:
   read  min=115ms avg=119.90ms max=128ms total=1199ms
   parse min=32ms avg=34.80ms max=38ms total=348ms
   total min=150ms avg=156.70ms max=168ms total=1567ms
+```
+
+The `compare` command checks that two sources produce the same metadata counts:
+
+```text
+Left: data/CKAN-meta-master.zip
+Right: data/CKAN-meta-master
+Matching: true
 ```
 
 ## Layout

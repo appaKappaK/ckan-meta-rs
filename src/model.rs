@@ -54,6 +54,21 @@ pub struct BenchReport {
 }
 
 #[derive(Debug, Serialize)]
+pub struct CompareReport {
+    pub left: String,
+    pub right: String,
+    pub matching: bool,
+    pub differences: Vec<CompareDifference>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompareDifference {
+    pub field: String,
+    pub left: String,
+    pub right: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct TimingStats {
     pub min: u128,
     pub max: u128,
