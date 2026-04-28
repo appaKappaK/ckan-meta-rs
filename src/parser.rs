@@ -39,10 +39,8 @@ pub fn parse_archive_details(archive: PathBuf) -> Result<ArchiveParse> {
         .filter(|entry| entry.path.ends_with(".ckan"))
         .collect();
 
-    let parsed: Vec<Result<ParsedModule, ParseError>> = ckan_entries
-        .par_iter()
-        .map(|entry| parse_module_entry(entry))
-        .collect();
+    let parsed: Vec<Result<ParsedModule, ParseError>> =
+        ckan_entries.par_iter().map(parse_module_entry).collect();
 
     let mut modules = Vec::new();
     let mut errors = Vec::new();
