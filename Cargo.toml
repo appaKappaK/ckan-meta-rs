@@ -1,0 +1,17 @@
+[package]
+name = "ckan-meta-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Experimental CKAN metadata archive parser and benchmark tool."
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+flate2 = "1"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tar = "0.4"
+zip = "2"
+
