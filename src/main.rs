@@ -36,6 +36,24 @@ enum Command {
         #[arg(long, default_value_t = 8)]
         max_errors: usize,
     },
+
+    /// Parse the same archive repeatedly and report timing statistics.
+    Bench {
+        /// Path to a CKAN metadata .zip or .tar.gz archive.
+        archive: PathBuf,
+
+        /// Number of measured runs.
+        #[arg(long, default_value_t = 10)]
+        runs: usize,
+
+        /// Number of warmup runs to discard before measuring.
+        #[arg(long, default_value_t = 2)]
+        warmups: usize,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +62,7 @@ struct TextEntry {
     contents: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ParseReport {
     archive: String,
     archive_kind: String,
@@ -58,6 +76,11 @@ struct ParseReport {
     unique_identifiers: usize,
     duplicate_identifiers: usize,
     missing_identifier: usize,
+    dependency_edges: usize,
+    recommendation_edges: usize,
+    suggestion_edges: usize,
+    conflict_edges: usize,
+    provided_identifiers: usize,
     parse_errors: usize,
     download_counts: Option<usize>,
     builds: Option<usize>,
@@ -71,12 +94,55 @@ struct ParseReport {
 }
 
 #[derive(Debug, Serialize)]
+struct BenchReport {
+    archive: String,
+    archive_kind: String,
+    warmups: usize,
+    runs: usize,
+    sample: ParseReport,
+    read_ms: TimingStats,
+    parse_ms: TimingStats,
+    elapsed_ms: TimingStats,
+}
+
+#[derive(Debug, Serialize)]
+struct TimingStats {
+    min: u128,
+    max: u128,
+    avg: f64,
+    total: u128,
+    values: Vec<u128>,
+}
+
+impl TimingStats {
+    fn from_values(values: impl Iterator<Item = u128>) -> Self {
+        let values = values.collect::<Vec<_>>();
+        let total = values.iter().sum::<u128>();
+        let min = values.iter().copied().min().unwrap_or(0);
+        let max = values.iter().copied().max().unwrap_or(0);
+        let avg = if values.is_empty() {
+            0.0
+        } else {
+            total as f64 / values.len() as f64
+        };
+
+        Self {
+            min,
+            max,
+            avg,
+            total,
+            values,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct IdentifierCount {
     identifier: String,
     versions: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ParseError {
     path: String,
     error: String,
@@ -96,6 +162,11 @@ struct MinimalModule {
     name: Option<String>,
     version: Option<Value>,
     spec_version: Option<Value>,
+    depends: Option<Value>,
+    recommends: Option<Value>,
+    suggests: Option<Value>,
+    conflicts: Option<Value>,
+    provides: Option<Value>,
 }
 
 #[derive(Debug)]
@@ -104,6 +175,11 @@ struct ParsedModule {
     name: Option<String>,
     version: Option<String>,
     spec_version: Option<String>,
+    dependency_edges: usize,
+    recommendation_edges: usize,
+    suggestion_edges: usize,
+    conflict_edges: usize,
+    provided_identifiers: usize,
 }
 
 fn main() -> Result<()> {
@@ -115,12 +191,71 @@ fn main() -> Result<()> {
             json,
             max_errors,
         } => parse_archive(archive, json, max_errors),
+        Command::Bench {
+            archive,
+            runs,
+            warmups,
+            json,
+        } => bench_archive(archive, runs, warmups, json),
     }
 }
 
 fn parse_archive(archive: PathBuf, json: bool, max_errors: usize) -> Result<()> {
+    let report = parse_archive_report(archive)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_report(&report, max_errors);
+    }
+
+    Ok(())
+}
+
+fn bench_archive(archive: PathBuf, runs: usize, warmups: usize, json: bool) -> Result<()> {
+    if runs == 0 {
+        bail!("runs must be greater than zero");
+    }
+
+    for _ in 0..warmups {
+        parse_archive_report(archive.clone())?;
+    }
+
+    let mut reports = Vec::with_capacity(runs);
+    for _ in 0..runs {
+        reports.push(parse_archive_report(archive.clone())?);
+    }
+
+    let sample = reports
+        .first()
+        .cloned()
+        .context("benchmark produced no samples")?;
+    let report = BenchReport {
+        archive: sample.archive.clone(),
+        archive_kind: sample.archive_kind.clone(),
+        warmups,
+        runs,
+        read_ms: TimingStats::from_values(reports.iter().map(|report| report.read_ms)),
+        parse_ms: TimingStats::from_values(reports.iter().map(|report| report.parse_ms)),
+        elapsed_ms: TimingStats::from_values(reports.iter().map(|report| report.elapsed_ms)),
+        sample,
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_bench_report(&report);
+    }
+
+    Ok(())
+}
+
+fn parse_archive_report(archive: PathBuf) -> Result<ParseReport> {
     if !archive.is_file() {
-        bail!("archive does not exist or is not a file: {}", archive.display());
+        bail!(
+            "archive does not exist or is not a file: {}",
+            archive.display()
+        );
     }
 
     let started = Instant::now();
@@ -154,6 +289,11 @@ fn parse_archive(archive: PathBuf, json: bool, max_errors: usize) -> Result<()> 
         .iter()
         .filter(|module| module.identifier.as_deref().unwrap_or("").is_empty())
         .count();
+    let dependency_edges = sum_module_count(&modules, |module| module.dependency_edges);
+    let recommendation_edges = sum_module_count(&modules, |module| module.recommendation_edges);
+    let suggestion_edges = sum_module_count(&modules, |module| module.suggestion_edges);
+    let conflict_edges = sum_module_count(&modules, |module| module.conflict_edges);
+    let provided_identifiers = sum_module_count(&modules, |module| module.provided_identifiers);
     let top_identifiers = identifier_counts
         .iter()
         .rev()
@@ -164,14 +304,17 @@ fn parse_archive(archive: PathBuf, json: bool, max_errors: usize) -> Result<()> 
         })
         .collect::<Vec<_>>();
 
-    let report = ParseReport {
+    Ok(ParseReport {
         archive: archive.display().to_string(),
         archive_kind: archive_kind.to_string(),
         archive_entries: loaded.archive_entries,
         relevant_entries: loaded.entries.len(),
         ckan_entries: ckan_entries.len(),
         parsed_modules: modules.len(),
-        named_modules: modules.iter().filter(|module| has_text(&module.name)).count(),
+        named_modules: modules
+            .iter()
+            .filter(|module| has_text(&module.name))
+            .count(),
         versioned_modules: modules
             .iter()
             .filter(|module| has_text(&module.version))
@@ -190,6 +333,11 @@ fn parse_archive(archive: PathBuf, json: bool, max_errors: usize) -> Result<()> 
             .filter(|(versions, _)| *versions > 1)
             .count(),
         missing_identifier,
+        dependency_edges,
+        recommendation_edges,
+        suggestion_edges,
+        conflict_edges,
+        provided_identifiers,
         parse_errors: errors.len(),
         download_counts: special.download_counts,
         builds: special.builds,
@@ -200,15 +348,7 @@ fn parse_archive(archive: PathBuf, json: bool, max_errors: usize) -> Result<()> 
         elapsed_ms: started.elapsed().as_millis(),
         top_identifiers,
         errors,
-    };
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        print_report(&report, max_errors);
-    }
-
-    Ok(())
+    })
 }
 
 fn archive_kind(path: &Path) -> Result<&'static str> {
@@ -291,10 +431,7 @@ fn load_tar_gz(path: &Path) -> Result<ArchiveLoad> {
             .read_to_string(&mut contents)
             .with_context(|| format!("failed to read {path} as UTF-8 text"))?;
         bytes_read += size;
-        entries.push(TextEntry {
-            path,
-            contents,
-        });
+        entries.push(TextEntry { path, contents });
     }
 
     Ok(ArchiveLoad {
@@ -313,16 +450,22 @@ fn is_relevant_entry(path: &str) -> bool {
 }
 
 fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
-    let raw = serde_json::from_str::<MinimalModule>(&entry.contents).map_err(|error| ParseError {
-        path: entry.path.clone(),
-        error: error.to_string(),
-    })?;
+    let raw =
+        serde_json::from_str::<MinimalModule>(&entry.contents).map_err(|error| ParseError {
+            path: entry.path.clone(),
+            error: error.to_string(),
+        })?;
 
     Ok(ParsedModule {
         identifier: raw.identifier.map(clean_string),
         name: raw.name.map(clean_string),
         version: raw.version.as_ref().map(value_to_text),
         spec_version: raw.spec_version.as_ref().map(value_to_text),
+        dependency_edges: collection_len(raw.depends.as_ref()),
+        recommendation_edges: collection_len(raw.recommends.as_ref()),
+        suggestion_edges: collection_len(raw.suggests.as_ref()),
+        conflict_edges: collection_len(raw.conflicts.as_ref()),
+        provided_identifiers: collection_len(raw.provides.as_ref()),
     })
 }
 
@@ -340,6 +483,19 @@ fn value_to_text(value: &Value) -> String {
         Value::Null => String::new(),
         other => other.to_string(),
     }
+}
+
+fn collection_len(value: Option<&Value>) -> usize {
+    match value {
+        Some(Value::Array(items)) => items.len(),
+        Some(Value::Object(items)) => items.len(),
+        Some(Value::Null) | None => 0,
+        Some(_) => 1,
+    }
+}
+
+fn sum_module_count(modules: &[ParsedModule], count: impl Fn(&ParsedModule) -> usize) -> usize {
+    modules.iter().map(count).sum()
 }
 
 #[derive(Debug, Default)]
@@ -366,7 +522,10 @@ fn parse_special_entries(entries: &[TextEntry]) -> SpecialCounts {
 }
 
 fn count_json_object(contents: &str) -> Option<usize> {
-    serde_json::from_str::<Value>(contents).ok()?.as_object().map(|obj| obj.len())
+    serde_json::from_str::<Value>(contents)
+        .ok()?
+        .as_object()
+        .map(|obj| obj.len())
 }
 
 fn count_json_named_array_or_object(contents: &str, key: &str) -> Option<usize> {
@@ -410,6 +569,14 @@ fn print_report(report: &ParseReport, max_errors: usize) {
     println!("Unique identifiers: {}", report.unique_identifiers);
     println!("Duplicate identifiers: {}", report.duplicate_identifiers);
     println!("Missing identifiers: {}", report.missing_identifier);
+    println!(
+        "Relationship edges: depends={} recommends={} suggests={} conflicts={} provides={}",
+        report.dependency_edges,
+        report.recommendation_edges,
+        report.suggestion_edges,
+        report.conflict_edges,
+        report.provided_identifiers
+    );
     println!("Parse errors: {}", report.parse_errors);
     println!(
         "Special files: download_counts={} builds={} repositories={}",
@@ -440,6 +607,37 @@ fn print_report(report: &ParseReport, max_errors: usize) {
     }
 }
 
+fn print_bench_report(report: &BenchReport) {
+    println!("Archive: {}", report.archive);
+    println!("Type: {}", report.archive_kind);
+    println!("Warmups: {}", report.warmups);
+    println!("Runs: {}", report.runs);
+    println!("Parsed modules: {}", report.sample.parsed_modules);
+    println!("Unique identifiers: {}", report.sample.unique_identifiers);
+    println!(
+        "Relationship edges: depends={} recommends={} suggests={} conflicts={} provides={}",
+        report.sample.dependency_edges,
+        report.sample.recommendation_edges,
+        report.sample.suggestion_edges,
+        report.sample.conflict_edges,
+        report.sample.provided_identifiers
+    );
+    println!("Parse errors: {}", report.sample.parse_errors);
+    println!("Bytes read per run: {}", report.sample.bytes_read);
+    println!();
+    println!("Timing statistics:");
+    print_timing_stats("read", &report.read_ms);
+    print_timing_stats("parse", &report.parse_ms);
+    print_timing_stats("total", &report.elapsed_ms);
+}
+
+fn print_timing_stats(label: &str, stats: &TimingStats) {
+    println!(
+        "  {:<5} min={}ms avg={:.2}ms max={}ms total={}ms",
+        label, stats.min, stats.avg, stats.max, stats.total
+    );
+}
+
 fn option_count(value: Option<usize>) -> String {
     value
         .map(|count| count.to_string())
@@ -458,7 +656,19 @@ mod tests {
                 "spec_version": 1,
                 "identifier": "Example",
                 "name": "Example Mod",
-                "version": "1.2.3"
+                "version": "1.2.3",
+                "depends": [
+                    { "name": "ModuleManager" },
+                    { "name": "Harmony" }
+                ],
+                "recommends": [
+                    { "name": "ToolbarController" }
+                ],
+                "suggests": [],
+                "conflicts": [
+                    { "name": "OldExample" }
+                ],
+                "provides": [ "ExampleVirtual" ]
             }"#
             .to_string(),
         };
@@ -469,6 +679,11 @@ mod tests {
         assert_eq!(parsed.name.as_deref(), Some("Example Mod"));
         assert_eq!(parsed.version.as_deref(), Some("1.2.3"));
         assert_eq!(parsed.spec_version.as_deref(), Some("1"));
+        assert_eq!(parsed.dependency_edges, 2);
+        assert_eq!(parsed.recommendation_edges, 1);
+        assert_eq!(parsed.suggestion_edges, 0);
+        assert_eq!(parsed.conflict_edges, 1);
+        assert_eq!(parsed.provided_identifiers, 1);
     }
 
     #[test]
