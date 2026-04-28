@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 mod archive;
 mod download;
@@ -306,6 +307,12 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+
+    /// Generate shell completion scripts.
+    Completions {
+        /// Shell to generate completions for.
+        shell: Shell,
+    },
 }
 
 fn main() -> Result<()> {
@@ -400,6 +407,7 @@ fn main() -> Result<()> {
             reverse_limit,
         ),
         Command::Compare { left, right, json } => compare(left, right, json),
+        Command::Completions { shell } => completions(shell),
     }
 }
 
@@ -571,5 +579,12 @@ fn compare(left: PathBuf, right: PathBuf, json: bool) -> Result<()> {
         print_compare_report(&report);
     }
 
+    Ok(())
+}
+
+fn completions(shell: Shell) -> Result<()> {
+    let mut command = Cli::command();
+    let name = command.get_name().to_string();
+    clap_complete::generate(shell, &mut command, name, &mut std::io::stdout());
     Ok(())
 }

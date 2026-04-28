@@ -59,6 +59,7 @@ ckan-meta-rs relation-stats /path/to/CKAN-meta-master.zip --limit 15
 ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AVP-4kTextures --version v1.13
 ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --latest
 ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
+ckan-meta-rs completions bash > ckan-meta-rs.bash
 ```
 
 During development:
