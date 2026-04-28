@@ -5,8 +5,8 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::model::{
-    BenchReport, CompareReport, ExportPackage, ExtractionReport, ModuleInspection, ModuleSummary,
-    ParseReport, RelationMatch, RelationStatsReport, TimingStats,
+    BenchReport, CompareReport, DownloadReport, ExportPackage, ExtractionReport, ModuleInspection,
+    ModuleSummary, ParseReport, RelationMatch, RelationStatsReport, SyncReport, TimingStats,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -82,6 +82,33 @@ pub fn print_extraction_report(report: &ExtractionReport) {
     println!("Relevant entries: {}", report.relevant_entries);
     println!("Bytes written: {}", report.bytes_written);
     println!("Timing: extract={}ms", report.elapsed_ms);
+}
+
+pub fn print_download_report(report: &DownloadReport) {
+    println!("URL: {}", report.url);
+    println!("Output: {}", report.output);
+    println!("Bytes written: {}", report.bytes_written);
+    println!("Timing: download={}ms", report.elapsed_ms);
+}
+
+pub fn print_sync_report(report: &SyncReport) {
+    println!("Download:");
+    println!("  URL: {}", report.download.url);
+    println!("  Output: {}", report.download.output);
+    println!("  Bytes written: {}", report.download.bytes_written);
+    println!("  Timing: download={}ms", report.download.elapsed_ms);
+    println!();
+    println!("Extraction:");
+    println!("  Destination: {}", report.extraction.destination);
+    println!("  Type: {}", report.extraction.archive_kind);
+    println!("  Archive entries: {}", report.extraction.archive_entries);
+    println!("  Relevant entries: {}", report.extraction.relevant_entries);
+    println!("  Bytes written: {}", report.extraction.bytes_written);
+    println!("  Timing: extract={}ms", report.extraction.elapsed_ms);
+    if let Some(export) = report.export.as_ref() {
+        println!();
+        println!("Export: {export}");
+    }
 }
 
 pub fn print_bench_report(report: &BenchReport) {

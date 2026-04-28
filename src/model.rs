@@ -2,6 +2,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct DownloadReport {
+    pub url: String,
+    pub output: String,
+    pub bytes_written: u64,
+    pub elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ExtractionReport {
     pub source: String,
     pub destination: String,
@@ -10,6 +18,13 @@ pub struct ExtractionReport {
     pub relevant_entries: usize,
     pub bytes_written: u64,
     pub elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncReport {
+    pub download: DownloadReport,
+    pub extraction: ExtractionReport,
+    pub export: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

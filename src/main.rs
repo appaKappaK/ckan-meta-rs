@@ -4,15 +4,18 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 mod archive;
+mod download;
 mod model;
 mod output;
 mod parser;
 
 use archive::extract_relevant_entries;
+use download::download_to_file;
+use model::SyncReport;
 use output::{
-    print_bench_report, print_compare_report, print_extraction_report, print_module_inspection,
-    print_module_summaries, print_relation_matches, print_relation_stats, print_report,
-    write_export_package,
+    print_bench_report, print_compare_report, print_download_report, print_extraction_report,
+    print_module_inspection, print_module_summaries, print_relation_matches, print_relation_stats,
+    print_report, print_sync_report, write_export_package,
 };
 use parser::{
     benchmark_archive, compare_archives, export_package, find_module_summaries, inspect_module,
@@ -91,6 +94,58 @@ enum Command {
         /// Emit one module JSON object per line instead of a package object.
         #[arg(long)]
         json_lines: bool,
+    },
+
+    /// Download a CKAN metadata archive.
+    Fetch {
+        /// URL to download.
+        #[arg(
+            long,
+            default_value = "https://github.com/KSP-CKAN/CKAN-meta/archive/refs/heads/master.zip"
+        )]
+        url: String,
+
+        /// Output archive path.
+        #[arg(short, long, default_value = "data/CKAN-meta-master.zip")]
+        output: PathBuf,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Download, extract, and optionally export CKAN metadata.
+    Sync {
+        /// URL to download.
+        #[arg(
+            long,
+            default_value = "https://github.com/KSP-CKAN/CKAN-meta/archive/refs/heads/master.zip"
+        )]
+        url: String,
+
+        /// Output archive path.
+        #[arg(long, default_value = "data/CKAN-meta-master.zip")]
+        archive: PathBuf,
+
+        /// Destination cache directory.
+        #[arg(long, default_value = "data/CKAN-meta-cache")]
+        cache_dir: PathBuf,
+
+        /// Optional export file to write after cache extraction.
+        #[arg(long)]
+        export: Option<PathBuf>,
+
+        /// Write export as JSON lines instead of a package object.
+        #[arg(long)]
+        json_lines: bool,
+
+        /// Remove the cache directory before extracting.
+        #[arg(long, default_value_t = true)]
+        clean: bool,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Extract relevant metadata files into a persistent cache directory.
@@ -243,6 +298,16 @@ fn main() -> Result<()> {
             output,
             json_lines,
         } => export(archive, output, json_lines),
+        Command::Fetch { url, output, json } => fetch(url, output, json),
+        Command::Sync {
+            url,
+            archive,
+            cache_dir,
+            export,
+            json_lines,
+            clean,
+            json,
+        } => sync(url, archive, cache_dir, export, json_lines, clean, json),
         Command::Cache {
             archive,
             cache_dir,
@@ -323,6 +388,51 @@ fn modules(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>)
 fn export(archive: PathBuf, output: PathBuf, json_lines: bool) -> Result<()> {
     let package = export_package(archive)?;
     write_export_package(&package, &output, json_lines)
+}
+
+fn fetch(url: String, output: PathBuf, json: bool) -> Result<()> {
+    let report = download_to_file(&url, &output)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_download_report(&report);
+    }
+
+    Ok(())
+}
+
+fn sync(
+    url: String,
+    archive: PathBuf,
+    cache_dir: PathBuf,
+    export: Option<PathBuf>,
+    json_lines: bool,
+    clean: bool,
+    json: bool,
+) -> Result<()> {
+    let download = download_to_file(&url, &archive)?;
+    let extraction = extract_relevant_entries(&archive, &cache_dir, clean)?;
+    let export_path = export.as_ref().map(|path| path.display().to_string());
+
+    if let Some(output) = export {
+        let package = export_package(cache_dir.clone())?;
+        write_export_package(&package, &output, json_lines)?;
+    }
+
+    let report = SyncReport {
+        download,
+        extraction,
+        export: export_path,
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_sync_report(&report);
+    }
+
+    Ok(())
 }
 
 fn cache(

@@ -48,7 +48,9 @@ ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output summary.json
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output modules.jsonl --json-lines
+ckan-meta-rs fetch --output data/CKAN-meta-master.zip
 ckan-meta-rs cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
+ckan-meta-rs sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export modules.jsonl --json-lines
 ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
 ckan-meta-rs relations /path/to/CKAN-meta-master.zip AstronomersVisualPack
 ckan-meta-rs relation-stats /path/to/CKAN-meta-master.zip --limit 15
@@ -64,7 +66,9 @@ cargo run -- parse /path/to/CKAN-meta-master.zip
 cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- export /path/to/CKAN-meta-master.zip --output summary.json
+cargo run -- fetch --output data/CKAN-meta-master.zip
 cargo run -- cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
+cargo run -- sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export modules.jsonl --json-lines
 cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
 cargo run -- relations /path/to/CKAN-meta-master.zip TUFX --limit 20
 cargo run -- relation-stats /path/to/CKAN-meta-master.zip --limit 15
@@ -230,6 +234,14 @@ cache is intentionally comparable with the source archive:
 ```bash
 ckan-meta-rs cache data/CKAN-meta-master.zip data/cache-live --clean --export data/modules.jsonl --json-lines
 ckan-meta-rs compare data/CKAN-meta-master.zip data/cache-live
+```
+
+The `sync` command is the full pipeline: download current CKAN-meta, extract the
+persistent cache, and optionally export the module summary file:
+
+```bash
+ckan-meta-rs sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export data/modules.jsonl --json-lines
+ckan-meta-rs compare data/CKAN-meta-master.zip data/CKAN-meta-cache
 ```
 
 ## Next Steps
