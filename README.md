@@ -1,98 +1,167 @@
 # ckan-meta-rs
 
-Experimental Rust parser/benchmark tool for CKAN metadata repository archives.
+Experimental Rust CLI for reading CKAN metadata repositories, benchmarking parse
+performance, and producing stable summary files for CKAN-Linux catalog/search
+experiments.
 
-The first goal is to measure whether Rust can parse CKAN metadata archives
-meaningfully faster than CKAN's current C# `RepositoryData.FromStream(...)`
-path. This project should stay read-only until its output is proven compatible.
+The project is intentionally read-only. It does not replace CKAN's resolver or
+repository update path; it parses metadata into comparison and sidecar outputs so
+compatibility can be validated before any integration work depends on it.
 
-## Current MVP
+## What It Does
 
-- Accepts a CKAN metadata `.zip`, `.tar.gz`, or extracted directory.
-- Counts archive entries, relevant metadata entries, and `.ckan` files.
-- Parses module fields in parallel:
-  - `identifier`
-  - `name`
-  - `version`
-  - `spec_version`
-  - `abstract`
-  - `description`
-  - `author`
-  - `license`
-  - `kind`
-  - `release_date`
-  - `download_size`
-  - `install`
-  - `resources`
-  - `download`
-  - `ksp_version`, `ksp_version_min`, `ksp_version_max`
-- Counts unique identifiers, duplicate identifiers, missing identifiers, and parse errors.
-- Counts resolver-relevant relationship buckets:
-  - `depends`
-  - `recommends`
-  - `suggests`
-  - `conflicts`
-  - `provides`
-- Detects `download_counts.json`, `builds.json`, and `repositories.json` when present.
-- Reports read/parse/total timings.
-- Benchmarks repeated parses with warmups and min/avg/max/total timing stats.
-- Emits stable per-module summaries for compatibility comparison work.
-- Emits a CKAN-Linux catalog sidecar index with module rows, reverse relationship
-  edges, and provider mappings.
-- Can emit either a terminal report or JSON.
+- Reads CKAN metadata from `.zip`, `.tar.gz`/`.tgz`, or extracted directories.
+- Parses `.ckan` modules in parallel.
+- Reports archive, metadata, field coverage, relationship, and timing counts.
+- Emits per-module summaries as terminal tables, JSON arrays, or JSON lines.
+- Selects the latest version per identifier using CKAN-ish version ordering.
+- Exports stable package summaries for compatibility comparison.
+- Builds a CKAN-Linux catalog/search sidecar index with module rows, reverse
+  relationship edges, download counts, and provider mappings.
+- Downloads live CKAN-meta archives and maintains extracted metadata caches.
+- Searches identifiers, names, versions, relationship targets, unresolved
+  references, and reverse relationships.
+- Compares two metadata sources by normalized per-module fingerprints.
 
-## Usage
+Parsed fields currently include identifiers, names, versions, spec versions,
+abstracts/descriptions, authors, licenses, kinds, release dates, download sizes,
+download resources, install stanzas, KSP compatibility fields, and resolver
+relationship buckets (`depends`, `recommends`, `suggests`, `conflicts`,
+`provides`).
+
+## Install
+
+Requirements:
+
+- Rust stable toolchain
+- Network access only for `fetch`, `sync`, or the live benchmark scripts
+
+Build from the repository:
 
 ```bash
-ckan-meta-rs parse /path/to/CKAN-meta-master.zip
-ckan-meta-rs parse /path/to/CKAN-meta-master.tar.gz
-ckan-meta-rs parse /path/to/extracted/CKAN-meta-master
-ckan-meta-rs parse /path/to/CKAN-meta-master.zip --json
-ckan-meta-rs bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
-ckan-meta-rs bench /path/to/CKAN-meta-master.zip --json
-ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
-ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
-ckan-meta-rs latest /path/to/CKAN-meta-master.zip --limit 20
-ckan-meta-rs export /path/to/CKAN-meta-master.zip --output summary.json
-ckan-meta-rs export /path/to/CKAN-meta-master.zip --output modules.jsonl --json-lines
-ckan-meta-rs catalog-index /path/to/CKAN-meta-master.zip --output catalog-index.json --latest-only
-ckan-meta-rs validate-catalog-index catalog-index.json
-ckan-meta-rs validate-export modules.jsonl --json-lines
-ckan-meta-rs fetch --output data/CKAN-meta-master.zip
-ckan-meta-rs cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
-ckan-meta-rs sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export modules.jsonl --json-lines
-ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
-ckan-meta-rs relations /path/to/CKAN-meta-master.zip AstronomersVisualPack
-ckan-meta-rs relation-stats /path/to/CKAN-meta-master.zip --limit 15
-ckan-meta-rs unresolved /path/to/CKAN-meta-master.zip --relationship depends --limit 15
-ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AVP-4kTextures --version v1.13
-ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --latest
-ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
-ckan-meta-rs completions bash > ckan-meta-rs.bash
+cargo build --release
+target/release/ckan-meta-rs --help
 ```
 
-During development:
+Or run directly during development:
 
 ```bash
-cargo run -- parse /path/to/CKAN-meta-master.zip
-cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
-cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
-cargo run -- latest /path/to/CKAN-meta-master.zip --limit 20
-cargo run -- export /path/to/CKAN-meta-master.zip --output summary.json
-cargo run -- catalog-index /path/to/CKAN-meta-master.zip --output catalog-index.json --latest-only
-cargo run -- validate-catalog-index catalog-index.json
-cargo run -- validate-export summary.json
-cargo run -- fetch --output data/CKAN-meta-master.zip
-cargo run -- cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
-cargo run -- sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export modules.jsonl --json-lines
-cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
-cargo run -- relations /path/to/CKAN-meta-master.zip TUFX --limit 20
-cargo run -- relation-stats /path/to/CKAN-meta-master.zip --limit 15
-cargo run -- unresolved /path/to/CKAN-meta-master.zip --relationship depends --limit 15
-cargo run -- inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --version 3:v4.13
-cargo run -- inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --latest
-cargo run -- compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
-cargo test
+cargo run -- --help
+```
+
+## Quick Start
+
+Download the live CKAN metadata archive, extract a cache, and export JSON lines:
+
+```bash
+cargo run -- sync \
+  --archive data/CKAN-meta-master.zip \
+  --cache-dir data/CKAN-meta-cache \
+  --export data/modules.jsonl \
+  --json-lines
+```
+
+Run common analysis commands against the extracted cache:
+
+```bash
+cargo run -- parse data/CKAN-meta-cache
+cargo run -- bench data/CKAN-meta-cache --runs 20 --warmups 3
+cargo run -- latest data/CKAN-meta-cache --limit 20
+cargo run -- find data/CKAN-meta-cache Astronomer --limit 20
+cargo run -- inspect data/CKAN-meta-cache AstronomersVisualPack --latest
+cargo run -- relation-stats data/CKAN-meta-cache --limit 20
+```
+
+Build the CKAN-Linux sidecar index:
+
+```bash
+cargo run -- catalog-index data/CKAN-meta-cache \
+  --output data/catalog-index.json \
+  --latest-only \
+  --pretty
+
+cargo run -- validate-catalog-index data/catalog-index.json
+```
+
+## Commands
+
+```text
+parse                   Parse a source and report counts/timing
+bench                   Repeated parse benchmark with warmups
+modules                 Emit parsed module summaries
+latest                  Emit latest module summary per identifier
+export                  Write stable package JSON or JSON lines
+catalog-index           Write CKAN-Linux catalog/search sidecar JSON
+validate-catalog-index  Validate a catalog sidecar index
+validate-export         Validate an exported summary file
+fetch                   Download a CKAN metadata archive
+sync                    Download, extract, and optionally export
+cache                   Extract relevant metadata into a cache directory
+find                    Search by identifier, name, or version
+relations               Show modules that reference a relationship target
+relation-stats          Count common relationship targets
+unresolved              Find missing relationship targets
+inspect                 Inspect a module and reverse relationships
+compare                 Compare two metadata sources
+completions             Generate shell completions
+```
+
+Most commands accept a CKAN-meta `.zip`, `.tar.gz`/`.tgz`, or extracted metadata
+directory.
+
+See [docs/commands.md](docs/commands.md) for detailed command examples.
+
+## Output Formats
+
+Terminal reports are meant for quick inspection:
+
+```text
+Archive: data/CKAN-meta-master.zip
+Type: zip
+CKAN metadata entries: 29858
+Parsed modules: 29858
+Unique identifiers: 3497
+Parse errors: 0
+Timing statistics:
+  read  min=463ms avg=482.60ms max=507ms total=2413ms
+  parse min=43ms avg=60.20ms max=76ms total=301ms
+  total min=513ms avg=551.40ms max=586ms total=2757ms
+```
+
+JSON output is available on report-style commands with `--json`. Module lists can
+be emitted as pretty JSON arrays with `--json` or newline-delimited JSON with
+`--json-lines`.
+
+Example module summary:
+
+```json
+{
+  "identifier": "AVP-4kTextures",
+  "version": "v1.13",
+  "dependency_names": ["AstronomersVisualPack"],
+  "conflict_names": ["AVP-Textures"],
+  "provided_names": ["AVP-Textures"]
+}
+```
+
+## Development
+
+Run the local verification script:
+
+```bash
+scripts/smoke.sh
+```
+
+The smoke script runs formatting, tests, Clippy, release build, and fixture-based
+CLI checks when CKAN-Linux test fixtures are available.
+
+Equivalent core checks:
+
+```bash
+cargo fmt -- --check
+cargo test --locked
+cargo clippy --locked -- -D warnings
+cargo build --release --locked
 ```
 
 Fetch and benchmark the live metadata repository:
@@ -105,193 +174,31 @@ unzip -q data/CKAN-meta-master.zip -d data
 target/release/ckan-meta-rs bench data/CKAN-meta-master --runs 20 --warmups 3
 ```
 
-Or run the zip and extracted-directory comparison script:
+Or run the bundled comparison script:
 
 ```bash
 scripts/bench-live-meta.sh
 ```
 
-Example output:
+## Current Findings
 
-```text
-Archive: CKAN-meta-testkan.zip
-Type: zip
-Archive entries: 60
-Relevant entries: 54
-CKAN metadata entries: 54
-Parsed modules: 54
-Named modules: 54
-Versioned modules: 54
-Spec-versioned modules: 54
-Unique identifiers: 41
-Duplicate identifiers: 10
-Missing identifiers: 0
-Relationship edges: depends=46 recommends=32 suggests=1 conflicts=6 provides=6
-Field coverage: abstract=54 author=43 license=54 install=46 resources=49 download=54
-KSP compatibility fields: exact=51 min=2 max=0
-Parse errors: 0
-Special files: download_counts=- builds=- repositories=-
-Timing: read=3ms parse=1ms total=4ms
-```
+On the current live metadata set, JSON parsing is not the main bottleneck. Zip
+reading and decompression dominate end-to-end time, while scanning an extracted
+cache is substantially faster.
 
-Representative live metadata result from a local release build:
+The practical integration path is therefore:
 
-```text
-Archive: data/CKAN-meta-master.zip
-Type: zip
-Archive entries: 35314
-CKAN metadata entries: 29858
-Parsed modules: 29858
-Unique identifiers: 3497
-Parse errors: 0
-Timing statistics:
-  read  min=463ms avg=482.60ms max=507ms total=2413ms
-  parse min=43ms avg=60.20ms max=76ms total=301ms
-  total min=513ms avg=551.40ms max=586ms total=2757ms
-```
+1. Download CKAN-meta normally.
+2. Maintain a persistent extracted metadata cache.
+3. Scan the extracted cache in parallel.
+4. Produce compact JSON sidecars for catalog/search consumers.
 
-The same extracted metadata directory avoids zip decompression and central
-directory overhead:
+See [docs/findings.md](docs/findings.md) for benchmark numbers and integration
+notes.
 
-```text
-Archive: data/CKAN-meta-master
-Type: directory
-Parsed modules: 29858
-Parse errors: 0
-Timing statistics:
-  read  min=125ms avg=133.90ms max=147ms total=1339ms
-  parse min=46ms avg=51.80ms max=63ms total=518ms
-  total min=176ms avg=188.80ms max=208ms total=1888ms
-```
+## Repository Layout
 
-Per-module JSON output includes relationship names:
-
-```json
-{
-  "identifier": "AVP-4kTextures",
-  "version": "v1.13",
-  "dependency_names": ["AstronomersVisualPack"],
-  "conflict_names": ["AVP-Textures"],
-  "provided_names": ["AVP-Textures"]
-}
-```
-
-Reverse relationship lookup shows which modules reference a target:
-
-```text
-Relation   Target                           Identifier                       Version          KSP
-depends    AstronomersVisualPack            AVP-4kTextures                   v1.13            1.8+
-recommends TUFX                             AstronomersVisualPack            3:v4.13          1.12.0-1.12.9
-```
-
-`inspect` combines exact module matches with reverse relationships to the
-identifier and virtual identifiers that matched modules provide:
-
-```text
-Query: AVP-4kTextures
-Version: v1.13
-Relationship targets: AVP-4kTextures, AVP-Textures
-
-Matched modules:
-Identifier                       Version          Dep Rec Sug Con Ins KSP
-AVP-4kTextures                   v1.13              1   0   0   1   1 1.8+
-
-Reverse relationships:
-Relation   Target                           Identifier                       Version          KSP
-conflicts  AVP-Textures                     AVP-2kTextures                   v1.13            1.8+
-provides   AVP-Textures                     AVP-2kTextures                   v1.13            1.8+
-```
-
-Use `--latest` when you want the newest version by CKAN-ish ordering. It handles
-numeric chunks and epochs, so `v1.13` sorts after `v1.9`, and `3:v4.13` sorts
-after `2:v999`.
-
-Relationship target stats help sanity-check the metadata graph:
-
-```text
-Relation   Target                                              Count
-depends    ModuleManager                                       15534
-depends    CommunityResourcePack                                2126
-depends    ClickThroughBlocker                                  2038
-```
-
-`unresolved` lists targets referenced by a relationship bucket that are not
-present as an identifier or virtual `provides` entry:
-
-```text
-Target                                              Count
-SSRSS-Cont                                             23
-CountryDoggosRandomKKBits                              12
-AircraftIVAHelmet                                      10
-```
-
-The `compare` command checks that two sources produce the same metadata counts
-and normalized per-module fingerprints:
-
-```text
-Left: data/CKAN-meta-master.zip
-Right: data/CKAN-meta-master
-Matching: true
-```
-
-## Layout
-
-- `docs/commands.md`: command reference.
-- `docs/findings.md`: current benchmark results and integration notes.
-- `src/main.rs`: CLI command wiring.
-- `src/archive.rs`: archive type detection and zip/tar.gz text loading.
-- `src/model.rs`: serializable reports and module summaries.
-- `src/parser.rs`: CKAN JSON parsing, report construction, and benchmark loops.
-- `src/output.rs`: terminal, JSON, and JSON-lines output formatting.
-
-## Scope
-
-This tool is intentionally read-only. It does not install mods, write CKAN
-registries, or claim CKAN-compatible semantics yet. The first useful benchmark
-is raw archive and JSON throughput compared with CKAN's existing
-`RepositoryData.FromStream(...)` path.
-
-The `export` command is the intended CKAN-Linux bridge. Package JSON includes
-`schema_version`, aggregate report data, and all module summaries. JSON-lines
-mode writes one module summary per line for streaming consumers.
-
-Use `catalog-index` for a richer CKAN-Linux sidecar file. It writes package JSON
-with all module versions, latest-version flags, version counts, split
-relationship target names, download counts, reverse relationship rows, and
-provider mappings. This is meant for fast catalog/search experiments while
-CKAN's C# registry and resolver remain authoritative for install decisions.
-
-Pass `--latest-only` to write just the newest version per identifier. The command
-writes compact JSON by default for faster sidecar loading; pass `--pretty` when
-you want a human-readable file.
-
-Use `validate-export` to verify a bridge file is readable and has expected
-summary counts before another process consumes it.
-
-Use `validate-catalog-index` for the richer sidecar format.
-
-Use `latest` for a compact current-version view: one selected module summary per
-identifier using the same CKAN-ish version ordering as `inspect --latest`.
-
-The `cache` command extracts only relevant metadata entries into a persistent
-directory and can export from that directory in the same run. The extracted
-cache is intentionally comparable with the source archive:
-
-```bash
-ckan-meta-rs cache data/CKAN-meta-master.zip data/cache-live --clean --export data/modules.jsonl --json-lines
-ckan-meta-rs compare data/CKAN-meta-master.zip data/cache-live
-```
-
-The `sync` command is the full pipeline: download current CKAN-meta, extract the
-persistent cache, and optionally export the module summary file:
-
-```bash
-ckan-meta-rs sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export data/modules.jsonl --json-lines
-ckan-meta-rs compare data/CKAN-meta-master.zip data/CKAN-meta-cache
-```
-
-## Next Steps
-
-- Compare the parsed counts against CKAN's `RepositoryData.FromStream(...)` output.
-- Measure the `catalog-index` output against CKAN-Linux catalog load/search paths.
-- Keep install and dependency resolution in CKAN until sidecar output is proven equivalent.
+- [src/](src): CLI, archive readers, parser, output, and export validation code.
+- [scripts/](scripts): live metadata fetch, benchmark, and smoke scripts.
+- [docs/commands.md](docs/commands.md): command reference and common workflows.
+- [docs/findings.md](docs/findings.md): benchmark results and integration notes.
