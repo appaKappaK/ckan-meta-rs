@@ -157,6 +157,11 @@ pub struct ParsedModule {
     pub suggestion_edges: usize,
     pub conflict_edges: usize,
     pub provided_identifiers: usize,
+    pub dependency_names: Vec<String>,
+    pub recommendation_names: Vec<String>,
+    pub suggestion_names: Vec<String>,
+    pub conflict_names: Vec<String>,
+    pub provided_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -180,6 +185,11 @@ pub struct ModuleSummary {
     pub suggestion_edges: usize,
     pub conflict_edges: usize,
     pub provided_identifiers: usize,
+    pub dependency_names: Vec<String>,
+    pub recommendation_names: Vec<String>,
+    pub suggestion_names: Vec<String>,
+    pub conflict_names: Vec<String>,
+    pub provided_names: Vec<String>,
 }
 
 impl From<&ParsedModule> for ModuleSummary {
@@ -204,6 +214,11 @@ impl From<&ParsedModule> for ModuleSummary {
             suggestion_edges: module.suggestion_edges,
             conflict_edges: module.conflict_edges,
             provided_identifiers: module.provided_identifiers,
+            dependency_names: module.dependency_names.clone(),
+            recommendation_names: module.recommendation_names.clone(),
+            suggestion_names: module.suggestion_names.clone(),
+            conflict_names: module.conflict_names.clone(),
+            provided_names: module.provided_names.clone(),
         }
     }
 }

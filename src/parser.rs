@@ -199,6 +199,27 @@ pub fn module_summaries(archive: PathBuf, limit: Option<usize>) -> Result<Vec<Mo
     Ok(modules.iter().map(ModuleSummary::from).collect::<Vec<_>>())
 }
 
+pub fn find_module_summaries(
+    archive: PathBuf,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<Vec<ModuleSummary>> {
+    let query = query.to_lowercase();
+    let parsed = parse_archive_details(archive)?;
+    let mut matches = parsed
+        .modules
+        .iter()
+        .filter(|module| module_matches(module, &query))
+        .map(ModuleSummary::from)
+        .collect::<Vec<_>>();
+
+    if let Some(limit) = limit {
+        matches.truncate(limit);
+    }
+
+    Ok(matches)
+}
+
 pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> {
     let left_parse = parse_archive_details(left)?;
     let right_parse = parse_archive_details(right)?;
@@ -360,12 +381,29 @@ pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> 
     })
 }
 
+fn module_matches(module: &ParsedModule, query: &str) -> bool {
+    text_matches(&module.identifier, query)
+        || text_matches(&module.name, query)
+        || text_matches(&module.version, query)
+}
+
+fn text_matches(value: &Option<String>, query: &str) -> bool {
+    value
+        .as_deref()
+        .is_some_and(|text| text.to_lowercase().contains(query))
+}
+
 fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
     let raw =
         serde_json::from_str::<MinimalModule>(&entry.contents).map_err(|error| ParseError {
             path: entry.path.clone(),
             error: error.to_string(),
         })?;
+    let dependency_names = relationship_names(raw.depends.as_ref());
+    let recommendation_names = relationship_names(raw.recommends.as_ref());
+    let suggestion_names = relationship_names(raw.suggests.as_ref());
+    let conflict_names = relationship_names(raw.conflicts.as_ref());
+    let provided_names = relationship_names(raw.provides.as_ref());
 
     Ok(ParsedModule {
         path: entry.path.clone(),
@@ -382,12 +420,55 @@ fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
         ksp_version: raw.ksp_version.as_ref().map(value_to_text),
         ksp_version_min: raw.ksp_version_min.as_ref().map(value_to_text),
         ksp_version_max: raw.ksp_version_max.as_ref().map(value_to_text),
-        dependency_edges: collection_len(raw.depends.as_ref()),
-        recommendation_edges: collection_len(raw.recommends.as_ref()),
-        suggestion_edges: collection_len(raw.suggests.as_ref()),
-        conflict_edges: collection_len(raw.conflicts.as_ref()),
-        provided_identifiers: collection_len(raw.provides.as_ref()),
+        dependency_edges: dependency_names.len(),
+        recommendation_edges: recommendation_names.len(),
+        suggestion_edges: suggestion_names.len(),
+        conflict_edges: conflict_names.len(),
+        provided_identifiers: provided_names.len(),
+        dependency_names,
+        recommendation_names,
+        suggestion_names,
+        conflict_names,
+        provided_names,
     })
+}
+
+fn relationship_names(value: Option<&Value>) -> Vec<String> {
+    let mut names = match value {
+        Some(Value::Array(items)) => items.iter().filter_map(relationship_name).collect(),
+        Some(item) => relationship_name(item).into_iter().collect(),
+        None => Vec::new(),
+    };
+    names.sort();
+    names
+}
+
+fn relationship_name(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.trim().to_string()).filter(|text| !text.is_empty()),
+        Value::Object(obj) => {
+            if let Some(name) = obj
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .map(str::to_string)
+                .filter(|text| !text.is_empty())
+            {
+                return Some(name);
+            }
+
+            let mut any_of = obj
+                .get("any_of")
+                .and_then(Value::as_array)?
+                .iter()
+                .filter_map(relationship_name)
+                .collect::<Vec<_>>();
+            any_of.sort();
+
+            (!any_of.is_empty()).then(|| any_of.join("|"))
+        }
+        _ => None,
+    }
 }
 
 #[derive(Debug, Default)]
@@ -458,7 +539,7 @@ fn module_fingerprints(modules: &[ParsedModule]) -> BTreeSet<String> {
 
 fn module_fingerprint(module: &ParsedModule) -> String {
     format!(
-        "id={}|name={}|version={}|spec={}|abstract={}|author={}|license={}|resources={}|install={}|download={}|ksp={}|ksp_min={}|ksp_max={}|depends={}|recommends={}|suggests={}|conflicts={}|provides={}",
+        "id={}|name={}|version={}|spec={}|abstract={}|author={}|license={}|resources={}|install={}|download={}|ksp={}|ksp_min={}|ksp_max={}|depends={}:{}|recommends={}:{}|suggests={}:{}|conflicts={}:{}|provides={}:{}",
         optional_text(&module.identifier),
         optional_text(&module.name),
         optional_text(&module.version),
@@ -473,10 +554,15 @@ fn module_fingerprint(module: &ParsedModule) -> String {
         optional_text(&module.ksp_version_min),
         optional_text(&module.ksp_version_max),
         module.dependency_edges,
+        module.dependency_names.join(","),
         module.recommendation_edges,
+        module.recommendation_names.join(","),
         module.suggestion_edges,
+        module.suggestion_names.join(","),
         module.conflict_edges,
-        module.provided_identifiers
+        module.conflict_names.join(","),
+        module.provided_identifiers,
+        module.provided_names.join(",")
     )
 }
 
@@ -582,6 +668,16 @@ mod tests {
         assert_eq!(parsed.suggestion_edges, 0);
         assert_eq!(parsed.conflict_edges, 1);
         assert_eq!(parsed.provided_identifiers, 1);
+        assert_eq!(
+            parsed.dependency_names,
+            vec!["Harmony".to_string(), "ModuleManager".to_string()]
+        );
+        assert_eq!(
+            parsed.recommendation_names,
+            vec!["ToolbarController".to_string()]
+        );
+        assert_eq!(parsed.conflict_names, vec!["OldExample".to_string()]);
+        assert_eq!(parsed.provided_names, vec!["ExampleVirtual".to_string()]);
     }
 
     #[test]

@@ -46,6 +46,7 @@ ckan-meta-rs bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 ckan-meta-rs bench /path/to/CKAN-meta-master.zip --json
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
+ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
 ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 ```
 
@@ -55,6 +56,7 @@ During development:
 cargo run -- parse /path/to/CKAN-meta-master.zip
 cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
+cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
 cargo run -- compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
 cargo test
 ```
@@ -109,9 +111,9 @@ Parsed modules: 29858
 Unique identifiers: 3497
 Parse errors: 0
 Timing statistics:
-  read  min=447ms avg=456.25ms max=465ms total=9125ms
-  parse min=30ms avg=32.30ms max=35ms total=646ms
-  total min=487ms avg=494.85ms max=506ms total=9897ms
+  read  min=463ms avg=482.60ms max=507ms total=2413ms
+  parse min=43ms avg=60.20ms max=76ms total=301ms
+  total min=513ms avg=551.40ms max=586ms total=2757ms
 ```
 
 The same extracted metadata directory avoids zip decompression and central
@@ -123,9 +125,21 @@ Type: directory
 Parsed modules: 29858
 Parse errors: 0
 Timing statistics:
-  read  min=115ms avg=119.90ms max=128ms total=1199ms
-  parse min=32ms avg=34.80ms max=38ms total=348ms
-  total min=150ms avg=156.70ms max=168ms total=1567ms
+  read  min=125ms avg=133.90ms max=147ms total=1339ms
+  parse min=46ms avg=51.80ms max=63ms total=518ms
+  total min=176ms avg=188.80ms max=208ms total=1888ms
+```
+
+Per-module JSON output includes relationship names:
+
+```json
+{
+  "identifier": "AVP-4kTextures",
+  "version": "v1.13",
+  "dependency_names": ["AstronomersVisualPack"],
+  "conflict_names": ["AVP-Textures"],
+  "provided_names": ["AVP-Textures"]
+}
 ```
 
 The `compare` command checks that two sources produce the same metadata counts
