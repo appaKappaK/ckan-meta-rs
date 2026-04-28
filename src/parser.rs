@@ -20,6 +20,7 @@ use crate::model::{
 pub struct ArchiveParse {
     pub report: ParseReport,
     pub modules: Vec<ParsedModule>,
+    pub download_counts: BTreeMap<String, u64>,
 }
 
 pub fn parse_archive_report(archive: PathBuf) -> Result<ParseReport> {
@@ -62,6 +63,7 @@ pub fn parse_archive_details(archive: PathBuf) -> Result<ArchiveParse> {
     });
 
     let special = parse_special_entries(&loaded.entries);
+    let download_counts = parse_download_counts(&loaded.entries);
     let identifier_counts = identifier_counts(&modules);
     let missing_identifier = modules
         .iter()
@@ -156,7 +158,11 @@ pub fn parse_archive_details(archive: PathBuf) -> Result<ArchiveParse> {
         errors,
     };
 
-    Ok(ArchiveParse { report, modules })
+    Ok(ArchiveParse {
+        report,
+        modules,
+        download_counts,
+    })
 }
 
 pub fn benchmark_archive(archive: PathBuf, runs: usize, warmups: usize) -> Result<BenchReport> {
@@ -260,7 +266,14 @@ pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex
         .modules
         .iter()
         .filter(|module| !latest_only || module_is_latest(module, &latest_paths))
-        .filter_map(|module| catalog_module(module, &version_counts, &latest_paths))
+        .filter_map(|module| {
+            catalog_module(
+                module,
+                &version_counts,
+                &latest_paths,
+                &parsed.download_counts,
+            )
+        })
         .collect::<Vec<_>>();
     let relations = parsed
         .modules
@@ -822,6 +835,7 @@ fn catalog_module(
     module: &ParsedModule,
     version_counts: &BTreeMap<String, usize>,
     latest_paths: &BTreeMap<String, String>,
+    download_counts: &BTreeMap<String, u64>,
 ) -> Option<CatalogModule> {
     let identifier = module.identifier.as_ref()?.trim();
     if identifier.is_empty() {
@@ -848,6 +862,7 @@ fn catalog_module(
         kind: module.kind.clone(),
         release_date: module.release_date.clone(),
         download_size: module.download_size,
+        download_count: download_counts.get(identifier).copied(),
         ksp_version: module.ksp_version.clone(),
         ksp_version_min: module.ksp_version_min.clone(),
         ksp_version_max: module.ksp_version_max.clone(),
@@ -1092,6 +1107,25 @@ fn parse_special_entries(entries: &[TextEntry]) -> SpecialCounts {
     }
 
     counts
+}
+
+fn parse_download_counts(entries: &[TextEntry]) -> BTreeMap<String, u64> {
+    entries
+        .iter()
+        .find(|entry| entry.path.ends_with("download_counts.json"))
+        .and_then(|entry| serde_json::from_str::<Value>(&entry.contents).ok())
+        .and_then(|value| match value {
+            Value::Object(map) => Some(map),
+            _ => None,
+        })
+        .map(|map| {
+            map.into_iter()
+                .filter_map(|(identifier, count)| {
+                    value_to_u64(&count).map(|count| (identifier, count))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn count_json_object(contents: &str) -> Option<usize> {
@@ -1477,10 +1511,13 @@ mod tests {
         let modules = vec![old_module, new_module];
         let version_counts = version_counts_by_identifier(&modules);
         let latest_paths = latest_paths_by_identifier(&modules);
+        let download_counts = BTreeMap::from([("Example".to_string(), 42)]);
 
         let catalog_modules = modules
             .iter()
-            .filter_map(|module| catalog_module(module, &version_counts, &latest_paths))
+            .filter_map(|module| {
+                catalog_module(module, &version_counts, &latest_paths, &download_counts)
+            })
             .collect::<Vec<_>>();
         let relations = modules
             .iter()
@@ -1492,6 +1529,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(catalog_modules.len(), 2);
+        assert_eq!(catalog_modules[0].download_count, Some(42));
         assert_eq!(catalog_modules[0].version_count, 2);
         assert!(!catalog_modules[0].is_latest);
         assert!(catalog_modules[1].is_latest);

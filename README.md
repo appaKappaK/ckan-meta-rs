@@ -257,9 +257,9 @@ mode writes one module summary per line for streaming consumers.
 
 Use `catalog-index` for a richer CKAN-Linux sidecar file. It writes package JSON
 with all module versions, latest-version flags, version counts, split
-relationship target names, reverse relationship rows, and provider mappings. This
-is meant for fast catalog/search experiments while CKAN's C# registry and
-resolver remain authoritative for install decisions.
+relationship target names, download counts, reverse relationship rows, and
+provider mappings. This is meant for fast catalog/search experiments while
+CKAN's C# registry and resolver remain authoritative for install decisions.
 
 Pass `--latest-only` to write just the newest version per identifier. The command
 writes compact JSON by default for faster sidecar loading; pass `--pretty` when

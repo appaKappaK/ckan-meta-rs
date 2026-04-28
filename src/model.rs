@@ -269,6 +269,7 @@ pub struct CatalogModule {
     pub kind: Option<String>,
     pub release_date: Option<String>,
     pub download_size: Option<u64>,
+    pub download_count: Option<u64>,
     pub ksp_version: Option<String>,
     pub ksp_version_min: Option<String>,
     pub ksp_version_max: Option<String>,
