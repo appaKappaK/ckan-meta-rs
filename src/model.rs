@@ -200,6 +200,20 @@ pub struct RelationMatch {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct RelationStatsReport {
+    pub archive: String,
+    pub limit: usize,
+    pub targets: Vec<RelationTargetCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RelationTargetCount {
+    pub relationship: String,
+    pub target: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ModuleInspection {
     pub query: String,
     pub version: Option<String>,

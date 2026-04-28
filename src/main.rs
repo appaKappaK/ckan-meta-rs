@@ -10,11 +10,11 @@ mod parser;
 
 use output::{
     print_bench_report, print_compare_report, print_module_inspection, print_module_summaries,
-    print_relation_matches, print_report,
+    print_relation_matches, print_relation_stats, print_report,
 };
 use parser::{
     benchmark_archive, compare_archives, find_module_summaries, inspect_module, module_summaries,
-    parse_archive_report, relation_matches,
+    parse_archive_report, relation_matches, relation_stats,
 };
 
 #[derive(Debug, Parser)]
@@ -119,6 +119,20 @@ enum Command {
         limit: Option<usize>,
     },
 
+    /// Count the most common relationship targets.
+    RelationStats {
+        /// Path to a CKAN metadata source.
+        archive: PathBuf,
+
+        /// Number of rows to show.
+        #[arg(long, default_value_t = 30)]
+        limit: usize,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Inspect a module and reverse relationships to it.
     Inspect {
         /// Path to a CKAN metadata source.
@@ -197,6 +211,11 @@ fn main() -> Result<()> {
             json,
             limit,
         } => relations(archive, target, json, json_lines, limit),
+        Command::RelationStats {
+            archive,
+            limit,
+            json,
+        } => relation_target_stats(archive, limit, json),
         Command::Inspect {
             archive,
             identifier,
@@ -267,6 +286,11 @@ fn relations(
 ) -> Result<()> {
     let matches = relation_matches(archive, &target, limit)?;
     print_relation_matches(&matches, json, json_lines)
+}
+
+fn relation_target_stats(archive: PathBuf, limit: usize, json: bool) -> Result<()> {
+    let report = relation_stats(archive, limit)?;
+    print_relation_stats(&report, json)
 }
 
 fn inspect(

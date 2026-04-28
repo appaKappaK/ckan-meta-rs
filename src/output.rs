@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::model::{
     BenchReport, CompareReport, ModuleInspection, ModuleSummary, ParseReport, RelationMatch,
-    TimingStats,
+    RelationStatsReport, TimingStats,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -157,6 +157,28 @@ pub fn print_relation_matches(
         }
     } else {
         print_relation_table(matches);
+    }
+
+    Ok(())
+}
+
+pub fn print_relation_stats(report: &RelationStatsReport, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Archive: {}", report.archive);
+    println!("Limit: {}", report.limit);
+    println!();
+    println!("{:<10} {:<48} {:>8}", "Relation", "Target", "Count");
+    for target in &report.targets {
+        println!(
+            "{:<10} {:<48} {:>8}",
+            target.relationship,
+            truncate(&target.target, 48),
+            target.count
+        );
     }
 
     Ok(())

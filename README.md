@@ -48,6 +48,7 @@ ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
 ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
 ckan-meta-rs relations /path/to/CKAN-meta-master.zip AstronomersVisualPack
+ckan-meta-rs relation-stats /path/to/CKAN-meta-master.zip --limit 15
 ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AVP-4kTextures --version v1.13
 ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --latest
 ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
@@ -61,6 +62,7 @@ cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
 cargo run -- relations /path/to/CKAN-meta-master.zip TUFX --limit 20
+cargo run -- relation-stats /path/to/CKAN-meta-master.zip --limit 15
 cargo run -- inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --version 3:v4.13
 cargo run -- inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --latest
 cargo run -- compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
@@ -177,6 +179,15 @@ provides   AVP-Textures                     AVP-2kTextures                   v1.
 Use `--latest` when you want the newest version by CKAN-ish ordering. It handles
 numeric chunks and epochs, so `v1.13` sorts after `v1.9`, and `3:v4.13` sorts
 after `2:v999`.
+
+Relationship target stats help sanity-check the metadata graph:
+
+```text
+Relation   Target                                              Count
+depends    ModuleManager                                       15534
+depends    CommunityResourcePack                                2126
+depends    ClickThroughBlocker                                  2038
+```
 
 The `compare` command checks that two sources produce the same metadata counts
 and normalized per-module fingerprints:

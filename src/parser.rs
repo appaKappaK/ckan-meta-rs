@@ -11,7 +11,8 @@ use crate::archive::{archive_kind, load_archive, TextEntry};
 use crate::model::{
     clean_string, collection_len, has_text, has_value, value_to_text, BenchReport,
     CompareDifference, CompareReport, IdentifierCount, MinimalModule, ModuleInspection,
-    ModuleSummary, ParseError, ParseReport, ParsedModule, RelationMatch, TimingStats,
+    ModuleSummary, ParseError, ParseReport, ParsedModule, RelationMatch, RelationStatsReport,
+    RelationTargetCount, TimingStats,
 };
 
 #[derive(Debug)]
@@ -239,6 +240,42 @@ pub fn relation_matches(
     Ok(matches)
 }
 
+pub fn relation_stats(archive: PathBuf, limit: usize) -> Result<RelationStatsReport> {
+    let parsed = parse_archive_details(archive)?;
+    let mut counts = BTreeMap::new();
+
+    for module in &parsed.modules {
+        count_relation_targets(&mut counts, "depends", &module.dependency_names);
+        count_relation_targets(&mut counts, "recommends", &module.recommendation_names);
+        count_relation_targets(&mut counts, "suggests", &module.suggestion_names);
+        count_relation_targets(&mut counts, "conflicts", &module.conflict_names);
+        count_relation_targets(&mut counts, "provides", &module.provided_names);
+    }
+
+    let mut targets = counts
+        .into_iter()
+        .map(|((relationship, target), count)| RelationTargetCount {
+            relationship,
+            target,
+            count,
+        })
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.relationship.cmp(&right.relationship))
+            .then_with(|| left.target.cmp(&right.target))
+    });
+    targets.truncate(limit);
+
+    Ok(RelationStatsReport {
+        archive: parsed.report.archive,
+        limit,
+        targets,
+    })
+}
+
 pub fn inspect_module(
     archive: PathBuf,
     identifier: &str,
@@ -453,6 +490,18 @@ pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> 
         left_only_modules,
         right_only_modules,
     })
+}
+
+fn count_relation_targets(
+    counts: &mut BTreeMap<(String, String), usize>,
+    relationship: &str,
+    targets: &[String],
+) {
+    for target in targets {
+        *counts
+            .entry((relationship.to_string(), target.clone()))
+            .or_default() += 1;
+    }
 }
 
 fn collect_module_relation_matches(
