@@ -163,6 +163,7 @@ Matching: true
 
 ## Layout
 
+- `docs/findings.md`: current benchmark results and integration notes.
 - `src/main.rs`: CLI command wiring.
 - `src/archive.rs`: archive type detection and zip/tar.gz text loading.
 - `src/model.rs`: serializable reports and module summaries.
