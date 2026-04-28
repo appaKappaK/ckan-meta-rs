@@ -19,12 +19,12 @@ use output::{
     print_bench_report, print_compare_report, print_download_report, print_export_validation,
     print_extraction_report, print_module_inspection, print_module_summaries,
     print_relation_matches, print_relation_stats, print_report, print_sync_report,
-    write_export_package,
+    print_unresolved_relations, write_export_package,
 };
 use parser::{
     benchmark_archive, compare_archives, export_package, find_module_summaries, inspect_module,
     latest_module_summaries, module_summaries, parse_archive_report, relation_matches,
-    relation_stats,
+    relation_stats, unresolved_relations,
 };
 
 #[derive(Debug, Parser)]
@@ -266,6 +266,24 @@ enum Command {
         json: bool,
     },
 
+    /// Find relationship targets not present as identifiers or provided virtual packages.
+    Unresolved {
+        /// Path to a CKAN metadata source.
+        archive: PathBuf,
+
+        /// Relationship to inspect: depends, recommends, suggests, conflicts, or provides.
+        #[arg(long, default_value = "depends")]
+        relationship: String,
+
+        /// Number of rows to show.
+        #[arg(long, default_value_t = 30)]
+        limit: usize,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Inspect a module and reverse relationships to it.
     Inspect {
         /// Path to a CKAN metadata source.
@@ -389,6 +407,12 @@ fn main() -> Result<()> {
             limit,
             json,
         } => relation_target_stats(archive, limit, json),
+        Command::Unresolved {
+            archive,
+            relationship,
+            limit,
+            json,
+        } => unresolved(archive, relationship, limit, json),
         Command::Inspect {
             archive,
             identifier,
@@ -548,6 +572,11 @@ fn relations(
 fn relation_target_stats(archive: PathBuf, limit: usize, json: bool) -> Result<()> {
     let report = relation_stats(archive, limit)?;
     print_relation_stats(&report, json)
+}
+
+fn unresolved(archive: PathBuf, relationship: String, limit: usize, json: bool) -> Result<()> {
+    let report = unresolved_relations(archive, &relationship, limit)?;
+    print_unresolved_relations(&report, json)
 }
 
 fn inspect(

@@ -7,7 +7,7 @@ use anyhow::Result;
 use crate::model::{
     BenchReport, CompareReport, DownloadReport, ExportPackage, ExportValidationReport,
     ExtractionReport, ModuleInspection, ModuleSummary, ParseReport, RelationMatch,
-    RelationStatsReport, SyncReport, TimingStats,
+    RelationStatsReport, SyncReport, TimingStats, UnresolvedRelationReport,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -276,6 +276,24 @@ pub fn print_relation_stats(report: &RelationStatsReport, json: bool) -> Result<
             truncate(&target.target, 48),
             target.count
         );
+    }
+
+    Ok(())
+}
+
+pub fn print_unresolved_relations(report: &UnresolvedRelationReport, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Archive: {}", report.archive);
+    println!("Relationship: {}", report.relationship);
+    println!("Limit: {}", report.limit);
+    println!();
+    println!("{:<48} {:>8}", "Target", "Count");
+    for target in &report.targets {
+        println!("{:<48} {:>8}", truncate(&target.target, 48), target.count);
     }
 
     Ok(())

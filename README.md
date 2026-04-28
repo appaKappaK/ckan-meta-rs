@@ -56,6 +56,7 @@ ckan-meta-rs sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta
 ckan-meta-rs find /path/to/CKAN-meta-master.zip AVP-4kTextures --json-lines
 ckan-meta-rs relations /path/to/CKAN-meta-master.zip AstronomersVisualPack
 ckan-meta-rs relation-stats /path/to/CKAN-meta-master.zip --limit 15
+ckan-meta-rs unresolved /path/to/CKAN-meta-master.zip --relationship depends --limit 15
 ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AVP-4kTextures --version v1.13
 ckan-meta-rs inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --latest
 ckan-meta-rs compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
@@ -77,6 +78,7 @@ cargo run -- sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta
 cargo run -- find /path/to/CKAN-meta-master.zip Astronomer --limit 20
 cargo run -- relations /path/to/CKAN-meta-master.zip TUFX --limit 20
 cargo run -- relation-stats /path/to/CKAN-meta-master.zip --limit 15
+cargo run -- unresolved /path/to/CKAN-meta-master.zip --relationship depends --limit 15
 cargo run -- inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --version 3:v4.13
 cargo run -- inspect /path/to/CKAN-meta-master.zip AstronomersVisualPack --latest
 cargo run -- compare /path/to/CKAN-meta-master.zip /path/to/extracted/CKAN-meta-master
@@ -201,6 +203,16 @@ Relation   Target                                              Count
 depends    ModuleManager                                       15534
 depends    CommunityResourcePack                                2126
 depends    ClickThroughBlocker                                  2038
+```
+
+`unresolved` lists targets referenced by a relationship bucket that are not
+present as an identifier or virtual `provides` entry:
+
+```text
+Target                                              Count
+SSRSS-Cont                                             23
+CountryDoggosRandomKKBits                              12
+AircraftIVAHelmet                                      10
 ```
 
 The `compare` command checks that two sources produce the same metadata counts

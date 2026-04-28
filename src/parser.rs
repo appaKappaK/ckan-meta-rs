@@ -12,7 +12,8 @@ use crate::model::{
     clean_string, collection_len, has_text, has_value, value_to_text, BenchReport,
     CompareDifference, CompareReport, ExportPackage, IdentifierCount, MinimalModule,
     ModuleInspection, ModuleSummary, ParseError, ParseReport, ParsedModule, RelationMatch,
-    RelationStatsReport, RelationTargetCount, TimingStats,
+    RelationStatsReport, RelationTargetCount, TimingStats, UnresolvedRelationReport,
+    UnresolvedRelationTarget,
 };
 
 #[derive(Debug)]
@@ -327,6 +328,55 @@ pub fn relation_stats(archive: PathBuf, limit: usize) -> Result<RelationStatsRep
     })
 }
 
+pub fn unresolved_relations(
+    archive: PathBuf,
+    relationship: &str,
+    limit: usize,
+) -> Result<UnresolvedRelationReport> {
+    let parsed = parse_archive_details(archive)?;
+    let relationship = relationship.to_lowercase();
+    let mut provided = BTreeSet::new();
+
+    for module in &parsed.modules {
+        if let Some(identifier) = module.identifier.as_ref() {
+            provided.insert(identifier.to_lowercase());
+        }
+        for provided_name in &module.provided_names {
+            provided.insert(provided_name.to_lowercase());
+        }
+    }
+
+    let mut counts = BTreeMap::<String, usize>::new();
+    for module in &parsed.modules {
+        let targets = relationship_targets(module, &relationship)?;
+        for target in targets {
+            if relation_target_is_resolved(target, &provided) {
+                continue;
+            }
+            *counts.entry(target.clone()).or_default() += 1;
+        }
+    }
+
+    let mut targets = counts
+        .into_iter()
+        .map(|(target, count)| UnresolvedRelationTarget { target, count })
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.target.cmp(&right.target))
+    });
+    targets.truncate(limit);
+
+    Ok(UnresolvedRelationReport {
+        archive: parsed.report.archive,
+        relationship,
+        limit,
+        targets,
+    })
+}
+
 pub fn inspect_module(
     archive: PathBuf,
     identifier: &str,
@@ -541,6 +591,23 @@ pub fn compare_archives(left: PathBuf, right: PathBuf) -> Result<CompareReport> 
         left_only_modules,
         right_only_modules,
     })
+}
+
+fn relationship_targets<'a>(module: &'a ParsedModule, relationship: &str) -> Result<&'a [String]> {
+    match relationship {
+        "depends" => Ok(&module.dependency_names),
+        "recommends" => Ok(&module.recommendation_names),
+        "suggests" => Ok(&module.suggestion_names),
+        "conflicts" => Ok(&module.conflict_names),
+        "provides" => Ok(&module.provided_names),
+        _ => bail!("unsupported relationship: {relationship}"),
+    }
+}
+
+fn relation_target_is_resolved(target: &str, provided: &BTreeSet<String>) -> bool {
+    target
+        .split('|')
+        .any(|option| provided.contains(&option.to_lowercase()))
 }
 
 fn count_relation_targets(

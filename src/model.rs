@@ -240,6 +240,20 @@ pub struct RelationTargetCount {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct UnresolvedRelationReport {
+    pub archive: String,
+    pub relationship: String,
+    pub limit: usize,
+    pub targets: Vec<UnresolvedRelationTarget>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UnresolvedRelationTarget {
+    pub target: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ModuleInspection {
     pub query: String,
     pub version: Option<String>,
