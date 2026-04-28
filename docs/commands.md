@@ -19,6 +19,15 @@ ckan-meta-rs sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta
 `sync` is the full pipeline: download, extract relevant metadata, and optionally
 export the bridge file.
 
+## Verification
+
+```bash
+scripts/smoke.sh
+```
+
+The smoke script runs formatting, tests, Clippy, release build, and fixture-based
+CLI checks when CKAN-Linux test fixtures are available.
+
 ## Export Commands
 
 ```bash
