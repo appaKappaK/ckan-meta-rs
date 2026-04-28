@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -242,6 +243,7 @@ pub fn inspect_module(
     archive: PathBuf,
     identifier: &str,
     version: Option<&str>,
+    latest: bool,
     limit: Option<usize>,
     reverse_limit: Option<usize>,
 ) -> Result<ModuleInspection> {
@@ -253,7 +255,10 @@ pub fn inspect_module(
         .filter(|module| version.is_none_or(|version| module.version.as_deref() == Some(version)))
         .collect::<Vec<_>>();
 
-    if let Some(limit) = limit {
+    if latest {
+        modules.sort_by(|left, right| compare_version_text(&right.version, &left.version));
+        modules.truncate(1);
+    } else if let Some(limit) = limit {
         modules.truncate(limit);
     }
 
@@ -718,6 +723,124 @@ fn optional_text(value: &Option<String>) -> &str {
     value.as_deref().unwrap_or("")
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct VersionKey {
+    epoch: u64,
+    parts: Vec<VersionPart>,
+}
+
+impl Ord for VersionKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.epoch
+            .cmp(&other.epoch)
+            .then_with(|| compare_version_parts(&self.parts, &other.parts))
+    }
+}
+
+impl PartialOrd for VersionKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum VersionPart {
+    Number(u64),
+    Text(String),
+}
+
+fn compare_version_text(left: &Option<String>, right: &Option<String>) -> Ordering {
+    version_key(left.as_deref()).cmp(&version_key(right.as_deref()))
+}
+
+fn version_key(version: Option<&str>) -> VersionKey {
+    let version = version.unwrap_or_default();
+    let (epoch, raw_version) = version
+        .split_once(':')
+        .and_then(|(epoch, rest)| epoch.parse::<u64>().ok().map(|epoch| (epoch, rest)))
+        .unwrap_or((0, version));
+    let raw_version = raw_version
+        .strip_prefix('v')
+        .or_else(|| raw_version.strip_prefix('V'))
+        .unwrap_or(raw_version);
+
+    VersionKey {
+        epoch,
+        parts: version_parts(raw_version),
+    }
+}
+
+fn version_parts(version: &str) -> Vec<VersionPart> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut current_is_digit = None;
+
+    for ch in version.chars() {
+        if !ch.is_ascii_alphanumeric() {
+            push_version_part(&mut parts, &mut current, current_is_digit);
+            current_is_digit = None;
+            continue;
+        }
+
+        let is_digit = ch.is_ascii_digit();
+        if current_is_digit.is_some_and(|digit| digit != is_digit) {
+            push_version_part(&mut parts, &mut current, current_is_digit);
+        }
+
+        current_is_digit = Some(is_digit);
+        current.push(ch);
+    }
+
+    push_version_part(&mut parts, &mut current, current_is_digit);
+    parts
+}
+
+fn push_version_part(
+    parts: &mut Vec<VersionPart>,
+    current: &mut String,
+    current_is_digit: Option<bool>,
+) {
+    if current.is_empty() {
+        return;
+    }
+
+    if current_is_digit.unwrap_or(false) {
+        parts.push(VersionPart::Number(current.parse().unwrap_or(0)));
+    } else {
+        parts.push(VersionPart::Text(current.to_lowercase()));
+    }
+
+    current.clear();
+}
+
+fn compare_version_parts(left: &[VersionPart], right: &[VersionPart]) -> Ordering {
+    for index in 0..left.len().max(right.len()) {
+        match (left.get(index), right.get(index)) {
+            (Some(VersionPart::Number(left)), Some(VersionPart::Number(right))) => {
+                match left.cmp(right) {
+                    Ordering::Equal => {}
+                    ordering => return ordering,
+                }
+            }
+            (Some(VersionPart::Text(left)), Some(VersionPart::Text(right))) => {
+                match left.cmp(right) {
+                    Ordering::Equal => {}
+                    ordering => return ordering,
+                }
+            }
+            (Some(VersionPart::Number(_)), Some(VersionPart::Text(_))) => return Ordering::Greater,
+            (Some(VersionPart::Text(_)), Some(VersionPart::Number(_))) => return Ordering::Less,
+            (Some(VersionPart::Number(left)), None) if *left == 0 => {}
+            (None, Some(VersionPart::Number(right))) if *right == 0 => {}
+            (Some(_), None) => return Ordering::Greater,
+            (None, Some(_)) => return Ordering::Less,
+            (None, None) => return Ordering::Equal,
+        }
+    }
+
+    Ordering::Equal
+}
+
 fn compare_value<T>(differences: &mut Vec<CompareDifference>, field: &str, left: T, right: T)
 where
     T: std::fmt::Display + PartialEq,
@@ -900,5 +1023,21 @@ mod tests {
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].target, "FirstOption|SecondOption");
+    }
+
+    #[test]
+    fn compares_numeric_version_chunks() {
+        assert_eq!(
+            compare_version_text(&Some("v1.13".to_string()), &Some("v1.9".to_string())),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_version_text(&Some("3:v4.13".to_string()), &Some("2:v999".to_string())),
+            Ordering::Greater
+        );
+        assert_eq!(
+            compare_version_text(&Some("1.0.0".to_string()), &Some("1".to_string())),
+            Ordering::Equal
+        );
     }
 }

@@ -128,8 +128,12 @@ enum Command {
         identifier: String,
 
         /// Exact version to inspect.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "latest")]
         version: Option<String>,
+
+        /// Inspect only the latest version by CKAN-ish version ordering.
+        #[arg(long)]
+        latest: bool,
 
         /// Emit machine-readable JSON instead of a terminal report.
         #[arg(long)]
@@ -197,10 +201,19 @@ fn main() -> Result<()> {
             archive,
             identifier,
             version,
+            latest,
             json,
             limit,
             reverse_limit,
-        } => inspect(archive, identifier, version, json, limit, reverse_limit),
+        } => inspect(
+            archive,
+            identifier,
+            version,
+            latest,
+            json,
+            limit,
+            reverse_limit,
+        ),
         Command::Compare { left, right, json } => compare(left, right, json),
     }
 }
@@ -260,6 +273,7 @@ fn inspect(
     archive: PathBuf,
     identifier: String,
     version: Option<String>,
+    latest: bool,
     json: bool,
     limit: Option<usize>,
     reverse_limit: Option<usize>,
@@ -268,6 +282,7 @@ fn inspect(
         archive,
         &identifier,
         version.as_deref(),
+        latest,
         limit,
         reverse_limit,
     )?;
