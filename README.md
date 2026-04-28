@@ -48,6 +48,7 @@ ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output summary.json
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output modules.jsonl --json-lines
+ckan-meta-rs validate-export modules.jsonl --json-lines
 ckan-meta-rs fetch --output data/CKAN-meta-master.zip
 ckan-meta-rs cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
 ckan-meta-rs sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export modules.jsonl --json-lines
@@ -66,6 +67,7 @@ cargo run -- parse /path/to/CKAN-meta-master.zip
 cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- export /path/to/CKAN-meta-master.zip --output summary.json
+cargo run -- validate-export summary.json
 cargo run -- fetch --output data/CKAN-meta-master.zip
 cargo run -- cache /path/to/CKAN-meta-master.zip /path/to/cache --clean --export modules.jsonl --json-lines
 cargo run -- sync --archive data/CKAN-meta-master.zip --cache-dir data/CKAN-meta-cache --export modules.jsonl --json-lines
@@ -226,6 +228,9 @@ is raw archive and JSON throughput compared with CKAN's existing
 The `export` command is the intended CKAN-Linux bridge. Package JSON includes
 `schema_version`, aggregate report data, and all module summaries. JSON-lines
 mode writes one module summary per line for streaming consumers.
+
+Use `validate-export` to verify a bridge file is readable and has expected
+summary counts before another process consumes it.
 
 The `cache` command extracts only relevant metadata entries into a persistent
 directory and can export from that directory in the same run. The extracted

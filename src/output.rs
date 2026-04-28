@@ -5,8 +5,9 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::model::{
-    BenchReport, CompareReport, DownloadReport, ExportPackage, ExtractionReport, ModuleInspection,
-    ModuleSummary, ParseReport, RelationMatch, RelationStatsReport, SyncReport, TimingStats,
+    BenchReport, CompareReport, DownloadReport, ExportPackage, ExportValidationReport,
+    ExtractionReport, ModuleInspection, ModuleSummary, ParseReport, RelationMatch,
+    RelationStatsReport, SyncReport, TimingStats,
 };
 
 pub fn print_report(report: &ParseReport, max_errors: usize) {
@@ -175,6 +176,35 @@ pub fn write_export_package(
     }
 
     writer.flush()?;
+    Ok(())
+}
+
+pub fn print_export_validation(report: &ExportValidationReport, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+        return Ok(());
+    }
+
+    println!("Input: {}", report.input);
+    println!("Format: {}", report.format);
+    println!(
+        "Schema version: {}",
+        report
+            .schema_version
+            .map(|version| version.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    );
+    println!("Modules: {}", report.modules);
+    println!("Unique identifiers: {}", report.unique_identifiers);
+    println!("Missing identifiers: {}", report.missing_identifier);
+    print_relationship_counts(
+        report.dependency_edges,
+        report.recommendation_edges,
+        report.suggestion_edges,
+        report.conflict_edges,
+        report.provided_identifiers,
+    );
+
     Ok(())
 }
 

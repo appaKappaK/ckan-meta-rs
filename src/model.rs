@@ -27,7 +27,7 @@ pub struct SyncReport {
     pub export: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParseReport {
     pub archive: String,
     pub archive_kind: String,
@@ -127,13 +127,13 @@ impl TimingStats {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentifierCount {
     pub identifier: String,
     pub versions: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParseError {
     pub path: String,
     pub error: String,
@@ -190,7 +190,7 @@ pub struct ParsedModule {
     pub provided_names: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleSummary {
     pub path: String,
     pub identifier: Option<String>,
@@ -248,12 +248,27 @@ pub struct ModuleInspection {
     pub reverse_relationships: Vec<RelationMatch>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportPackage {
     pub schema_version: u32,
     pub source: String,
     pub report: ParseReport,
     pub modules: Vec<ModuleSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportValidationReport {
+    pub input: String,
+    pub format: String,
+    pub schema_version: Option<u32>,
+    pub modules: usize,
+    pub unique_identifiers: usize,
+    pub missing_identifier: usize,
+    pub dependency_edges: usize,
+    pub recommendation_edges: usize,
+    pub suggestion_edges: usize,
+    pub conflict_edges: usize,
+    pub provided_identifiers: usize,
 }
 
 impl From<&ParsedModule> for ModuleSummary {

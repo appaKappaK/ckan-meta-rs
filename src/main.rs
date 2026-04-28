@@ -5,17 +5,20 @@ use clap::{Parser, Subcommand};
 
 mod archive;
 mod download;
+mod export_file;
 mod model;
 mod output;
 mod parser;
 
 use archive::extract_relevant_entries;
 use download::download_to_file;
+use export_file::validate_export_file;
 use model::SyncReport;
 use output::{
-    print_bench_report, print_compare_report, print_download_report, print_extraction_report,
-    print_module_inspection, print_module_summaries, print_relation_matches, print_relation_stats,
-    print_report, print_sync_report, write_export_package,
+    print_bench_report, print_compare_report, print_download_report, print_export_validation,
+    print_extraction_report, print_module_inspection, print_module_summaries,
+    print_relation_matches, print_relation_stats, print_report, print_sync_report,
+    write_export_package,
 };
 use parser::{
     benchmark_archive, compare_archives, export_package, find_module_summaries, inspect_module,
@@ -94,6 +97,20 @@ enum Command {
         /// Emit one module JSON object per line instead of a package object.
         #[arg(long)]
         json_lines: bool,
+    },
+
+    /// Validate an exported summary file.
+    ValidateExport {
+        /// Export file path.
+        input: PathBuf,
+
+        /// Read the input as JSON lines instead of package JSON.
+        #[arg(long)]
+        json_lines: bool,
+
+        /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Download a CKAN metadata archive.
@@ -298,6 +315,11 @@ fn main() -> Result<()> {
             output,
             json_lines,
         } => export(archive, output, json_lines),
+        Command::ValidateExport {
+            input,
+            json_lines,
+            json,
+        } => validate_export(input, json_lines, json),
         Command::Fetch { url, output, json } => fetch(url, output, json),
         Command::Sync {
             url,
@@ -388,6 +410,11 @@ fn modules(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>)
 fn export(archive: PathBuf, output: PathBuf, json_lines: bool) -> Result<()> {
     let package = export_package(archive)?;
     write_export_package(&package, &output, json_lines)
+}
+
+fn validate_export(input: PathBuf, json_lines: bool, json: bool) -> Result<()> {
+    let report = validate_export_file(&input, json_lines)?;
+    print_export_validation(&report, json)
 }
 
 fn fetch(url: String, output: PathBuf, json: bool) -> Result<()> {
