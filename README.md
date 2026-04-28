@@ -226,6 +226,7 @@ Matching: true
 
 ## Layout
 
+- `docs/commands.md`: command reference.
 - `docs/findings.md`: current benchmark results and integration notes.
 - `src/main.rs`: CLI command wiring.
 - `src/archive.rs`: archive type detection and zip/tar.gz text loading.
