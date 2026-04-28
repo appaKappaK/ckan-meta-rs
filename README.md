@@ -8,7 +8,7 @@ path. This project should stay read-only until its output is proven compatible.
 
 ## Current MVP
 
-- Accepts a CKAN metadata `.zip` or `.tar.gz` archive.
+- Accepts a CKAN metadata `.zip`, `.tar.gz`, or extracted directory.
 - Counts archive entries, relevant metadata entries, and `.ckan` files.
 - Parses module fields in parallel:
   - `identifier`
@@ -40,6 +40,7 @@ path. This project should stay read-only until its output is proven compatible.
 ```bash
 ckan-meta-rs parse /path/to/CKAN-meta-master.zip
 ckan-meta-rs parse /path/to/CKAN-meta-master.tar.gz
+ckan-meta-rs parse /path/to/extracted/CKAN-meta-master
 ckan-meta-rs parse /path/to/CKAN-meta-master.zip --json
 ckan-meta-rs bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 ckan-meta-rs bench /path/to/CKAN-meta-master.zip --json
@@ -62,6 +63,14 @@ Fetch and benchmark the live metadata repository:
 scripts/fetch-live-meta.sh
 cargo build --release
 target/release/ckan-meta-rs bench data/CKAN-meta-master.zip --runs 20 --warmups 3
+unzip -q data/CKAN-meta-master.zip -d data
+target/release/ckan-meta-rs bench data/CKAN-meta-master --runs 20 --warmups 3
+```
+
+Or run the zip and extracted-directory comparison script:
+
+```bash
+scripts/bench-live-meta.sh
 ```
 
 Example output:
@@ -91,6 +100,7 @@ Representative live metadata result from a local release build:
 
 ```text
 Archive: data/CKAN-meta-master.zip
+Type: zip
 Archive entries: 35314
 CKAN metadata entries: 29858
 Parsed modules: 29858
@@ -100,6 +110,20 @@ Timing statistics:
   read  min=447ms avg=456.25ms max=465ms total=9125ms
   parse min=30ms avg=32.30ms max=35ms total=646ms
   total min=487ms avg=494.85ms max=506ms total=9897ms
+```
+
+The same extracted metadata directory avoids zip decompression and central
+directory overhead:
+
+```text
+Archive: data/CKAN-meta-master
+Type: directory
+Parsed modules: 29858
+Parse errors: 0
+Timing statistics:
+  read  min=115ms avg=119.90ms max=128ms total=1199ms
+  parse min=32ms avg=34.80ms max=38ms total=348ms
+  total min=150ms avg=156.70ms max=168ms total=1567ms
 ```
 
 ## Layout
@@ -120,5 +144,5 @@ is raw archive and JSON throughput compared with CKAN's existing
 ## Next Steps
 
 - Compare the parsed counts against CKAN's `RepositoryData.FromStream(...)` output.
-- Investigate whether zip decompression or archive layout is the main read-time bottleneck.
+- Investigate whether a persistent unpacked metadata cache is practical for CKAN-Linux.
 - Only consider CKAN integration if the parser is substantially faster on real metadata.

@@ -23,7 +23,7 @@ struct Cli {
 enum Command {
     /// Parse a CKAN metadata archive and report timing information.
     Parse {
-        /// Path to a CKAN metadata .zip or .tar.gz archive.
+        /// Path to a CKAN metadata .zip, .tar.gz archive, or extracted directory.
         archive: PathBuf,
 
         /// Emit machine-readable JSON instead of a terminal report.
@@ -37,7 +37,7 @@ enum Command {
 
     /// Parse the same archive repeatedly and report timing statistics.
     Bench {
-        /// Path to a CKAN metadata .zip or .tar.gz archive.
+        /// Path to a CKAN metadata .zip, .tar.gz archive, or extracted directory.
         archive: PathBuf,
 
         /// Number of measured runs.
@@ -55,7 +55,7 @@ enum Command {
 
     /// Emit per-module summaries for compatibility comparison work.
     Modules {
-        /// Path to a CKAN metadata .zip or .tar.gz archive.
+        /// Path to a CKAN metadata .zip, .tar.gz archive, or extracted directory.
         archive: PathBuf,
 
         /// Emit one JSON object per line.

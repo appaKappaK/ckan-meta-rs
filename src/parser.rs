@@ -23,11 +23,8 @@ pub fn parse_archive_report(archive: PathBuf) -> Result<ParseReport> {
 }
 
 pub fn parse_archive_details(archive: PathBuf) -> Result<ArchiveParse> {
-    if !archive.is_file() {
-        bail!(
-            "archive does not exist or is not a file: {}",
-            archive.display()
-        );
+    if !archive.exists() {
+        bail!("archive path does not exist: {}", archive.display());
     }
 
     let started = Instant::now();
