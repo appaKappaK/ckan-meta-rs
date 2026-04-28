@@ -22,7 +22,8 @@ use output::{
 };
 use parser::{
     benchmark_archive, compare_archives, export_package, find_module_summaries, inspect_module,
-    module_summaries, parse_archive_report, relation_matches, relation_stats,
+    latest_module_summaries, module_summaries, parse_archive_report, relation_matches,
+    relation_stats,
 };
 
 #[derive(Debug, Parser)]
@@ -69,6 +70,24 @@ enum Command {
 
     /// Emit per-module summaries for compatibility comparison work.
     Modules {
+        /// Path to a CKAN metadata .zip, .tar.gz archive, or extracted directory.
+        archive: PathBuf,
+
+        /// Emit one JSON object per line.
+        #[arg(long)]
+        json_lines: bool,
+
+        /// Emit one pretty-printed JSON array.
+        #[arg(long)]
+        json: bool,
+
+        /// Limit the number of module rows emitted.
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+
+    /// Emit the latest module summary for each identifier.
+    Latest {
         /// Path to a CKAN metadata .zip, .tar.gz archive, or extracted directory.
         archive: PathBuf,
 
@@ -310,6 +329,12 @@ fn main() -> Result<()> {
             json,
             limit,
         } => modules(archive, json, json_lines, limit),
+        Command::Latest {
+            archive,
+            json_lines,
+            json,
+            limit,
+        } => latest(archive, json, json_lines, limit),
         Command::Export {
             archive,
             output,
@@ -404,6 +429,11 @@ fn bench(archive: PathBuf, runs: usize, warmups: usize, json: bool) -> Result<()
 
 fn modules(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>) -> Result<()> {
     let modules = module_summaries(archive, limit)?;
+    print_module_summaries(&modules, json, json_lines)
+}
+
+fn latest(archive: PathBuf, json: bool, json_lines: bool, limit: Option<usize>) -> Result<()> {
+    let modules = latest_module_summaries(archive, limit)?;
     print_module_summaries(&modules, json, json_lines)
 }
 

@@ -199,6 +199,41 @@ pub fn module_summaries(archive: PathBuf, limit: Option<usize>) -> Result<Vec<Mo
     Ok(modules.iter().map(ModuleSummary::from).collect::<Vec<_>>())
 }
 
+pub fn latest_module_summaries(
+    archive: PathBuf,
+    limit: Option<usize>,
+) -> Result<Vec<ModuleSummary>> {
+    let parsed = parse_archive_details(archive)?;
+    let mut latest_by_identifier = BTreeMap::<String, &ParsedModule>::new();
+
+    for module in &parsed.modules {
+        let Some(identifier) = module.identifier.as_ref() else {
+            continue;
+        };
+
+        latest_by_identifier
+            .entry(identifier.clone())
+            .and_modify(|current| {
+                if compare_version_text(&module.version, &current.version).is_gt() {
+                    *current = module;
+                }
+            })
+            .or_insert(module);
+    }
+
+    let mut modules = latest_by_identifier
+        .into_values()
+        .map(ModuleSummary::from)
+        .collect::<Vec<_>>();
+    modules.sort_by(|left, right| left.identifier.cmp(&right.identifier));
+
+    if let Some(limit) = limit {
+        modules.truncate(limit);
+    }
+
+    Ok(modules)
+}
+
 pub fn export_package(archive: PathBuf) -> Result<ExportPackage> {
     let parsed = parse_archive_details(archive)?;
     let modules = parsed

@@ -46,6 +46,7 @@ ckan-meta-rs bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 ckan-meta-rs bench /path/to/CKAN-meta-master.zip --json
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs modules /path/to/CKAN-meta-master.zip --json-lines
+ckan-meta-rs latest /path/to/CKAN-meta-master.zip --limit 20
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output summary.json
 ckan-meta-rs export /path/to/CKAN-meta-master.zip --output modules.jsonl --json-lines
 ckan-meta-rs validate-export modules.jsonl --json-lines
@@ -66,6 +67,7 @@ During development:
 cargo run -- parse /path/to/CKAN-meta-master.zip
 cargo run -- bench /path/to/CKAN-meta-master.zip --runs 20 --warmups 3
 cargo run -- modules /path/to/CKAN-meta-master.zip --limit 20
+cargo run -- latest /path/to/CKAN-meta-master.zip --limit 20
 cargo run -- export /path/to/CKAN-meta-master.zip --output summary.json
 cargo run -- validate-export summary.json
 cargo run -- fetch --output data/CKAN-meta-master.zip
@@ -231,6 +233,9 @@ mode writes one module summary per line for streaming consumers.
 
 Use `validate-export` to verify a bridge file is readable and has expected
 summary counts before another process consumes it.
+
+Use `latest` for a compact current-version view: one selected module summary per
+identifier using the same CKAN-ish version ordering as `inspect --latest`.
 
 The `cache` command extracts only relevant metadata entries into a persistent
 directory and can export from that directory in the same run. The extracted
