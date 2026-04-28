@@ -370,3 +370,36 @@ fn safe_destination(root: &Path, archive_path: &str) -> Result<PathBuf> {
 
     Ok(root.join(relative))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_destination_keeps_normal_archive_paths_under_root() {
+        let destination = safe_destination(
+            Path::new("/tmp/cache"),
+            "CKAN-meta-master/ModuleManager/ModuleManager-1.ckan",
+        )
+        .expect("normal archive path should be safe");
+
+        assert_eq!(
+            destination,
+            Path::new("/tmp/cache/CKAN-meta-master/ModuleManager/ModuleManager-1.ckan")
+        );
+    }
+
+    #[test]
+    fn safe_destination_rejects_parent_components() {
+        let result = safe_destination(Path::new("/tmp/cache"), "CKAN-meta-master/../evil.ckan");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn safe_destination_rejects_empty_paths() {
+        let result = safe_destination(Path::new("/tmp/cache"), "/");
+
+        assert!(result.is_err());
+    }
+}
