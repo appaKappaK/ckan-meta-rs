@@ -1,12 +1,12 @@
 # ckan-meta-rs
 
 Experimental Rust CLI for reading CKAN metadata repositories, benchmarking parse
-performance, and producing stable summary files for CKAN-Linux catalog/search
-experiments.
+performance, and producing optional catalog/search sidecar files for CKAN-Linux.
 
-The project is intentionally read-only. It does not replace CKAN's resolver or
-repository update path; it parses metadata into comparison and sidecar outputs so
-compatibility can be validated before any integration work depends on it.
+The project is intentionally read-only. It does not replace CKAN's resolver,
+repository update path, install logic, or registry writes; it parses metadata
+into comparison and sidecar outputs that CKAN-Linux can consume as an optional
+browse/search acceleration layer.
 
 ## What It Does
 
@@ -16,8 +16,8 @@ compatibility can be validated before any integration work depends on it.
 - Emits per-module summaries as terminal tables, JSON arrays, or JSON lines.
 - Selects the latest version per identifier using CKAN-ish version ordering.
 - Exports stable package summaries for compatibility comparison.
-- Builds a CKAN-Linux catalog/search sidecar index with module rows, reverse
-  relationship edges, download counts, and provider mappings.
+- Builds an optional CKAN-Linux catalog/search sidecar index with module rows,
+  reverse relationship edges, download counts, and provider mappings.
 - Downloads live CKAN-meta archives and maintains extracted metadata caches.
 - Searches identifiers, names, versions, relationship targets, unresolved
   references, and reverse relationships.
@@ -72,7 +72,7 @@ cargo run -- inspect data/CKAN-meta-cache AstronomersVisualPack --latest
 cargo run -- relation-stats data/CKAN-meta-cache --limit 20
 ```
 
-Build the CKAN-Linux sidecar index:
+Build the optional CKAN-Linux sidecar index:
 
 ```bash
 cargo run -- catalog-index data/CKAN-meta-cache \
@@ -83,6 +83,22 @@ cargo run -- catalog-index data/CKAN-meta-cache \
 cargo run -- validate-catalog-index data/catalog-index.json
 ```
 
+To use the generated index with CKAN-Linux, either point the app at it:
+
+```bash
+CKAN_CATALOG_INDEX_PATH=/path/to/catalog-index.json ckan-linux
+```
+
+or symlink it into CKAN app data:
+
+```bash
+mkdir -p ~/.local/share/CKAN
+ln -s /path/to/catalog-index.json ~/.local/share/CKAN/catalog-index-latest.json
+```
+
+CKAN-Linux does not require this repo. If no valid sidecar index is configured,
+CKAN-Linux falls back to CKAN's normal registry/repository cache path.
+
 ## Commands
 
 ```text
@@ -91,7 +107,7 @@ bench                   Repeated parse benchmark with warmups
 modules                 Emit parsed module summaries
 latest                  Emit latest module summary per identifier
 export                  Write stable package JSON or JSON lines
-catalog-index           Write CKAN-Linux catalog/search sidecar JSON
+catalog-index           Write optional CKAN-Linux catalog/search sidecar JSON
 validate-catalog-index  Validate a catalog sidecar index
 validate-export         Validate an exported summary file
 fetch                   Download a CKAN metadata archive
@@ -123,9 +139,9 @@ Parsed modules: 29858
 Unique identifiers: 3497
 Parse errors: 0
 Timing statistics:
-  read  min=463ms avg=482.60ms max=507ms total=2413ms
-  parse min=43ms avg=60.20ms max=76ms total=301ms
-  total min=513ms avg=551.40ms max=586ms total=2757ms
+  read  min=432ms avg=440.50ms max=465ms total=8810ms
+  parse min=35ms avg=39.35ms max=48ms total=787ms
+  total min=470ms avg=482.65ms max=505ms total=9653ms
 ```
 
 JSON output is available on report-style commands with `--json`. Module lists can
@@ -186,12 +202,15 @@ On the current live metadata set, JSON parsing is not the main bottleneck. Zip
 reading and decompression dominate end-to-end time, while scanning an extracted
 cache is substantially faster.
 
-The practical integration path is therefore:
+The current sidecar path is:
 
 1. Download CKAN-meta normally.
 2. Maintain a persistent extracted metadata cache.
 3. Scan the extracted cache in parallel.
-4. Produce compact JSON sidecars for catalog/search consumers.
+4. Produce compact JSON sidecars for optional CKAN-Linux catalog/search loading.
+
+CKAN-Linux consumes the sidecar only when a valid index is configured and falls
+back to CKAN's normal registry/repository cache path otherwise.
 
 See [docs/findings.md](docs/findings.md) for benchmark numbers and integration
 notes.

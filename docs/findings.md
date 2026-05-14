@@ -2,7 +2,7 @@
 
 ## Current Signal
 
-The prototype can parse the live `KSP-CKAN/CKAN-meta` repository successfully:
+The CLI parses the live `KSP-CKAN/CKAN-meta` repository successfully:
 
 - CKAN metadata entries: `29,858`
 - Unique identifiers: `3,497`
@@ -18,21 +18,23 @@ Release benchmark results on this machine:
 
 | Source | Read avg | Parse avg | Total avg |
 | --- | ---: | ---: | ---: |
-| `data/CKAN-meta-master.zip` | `482.60ms` | `60.20ms` | `551.40ms` |
-| `data/CKAN-meta-master` extracted directory | `133.90ms` | `51.80ms` | `188.80ms` |
+| `data/CKAN-meta-master.zip` | `440.50ms` | `39.35ms` | `482.65ms` |
+| `data/CKAN-meta-master` extracted directory | `110.85ms` | `44.70ms` | `156.70ms` |
 
 The key result is that JSON parsing is not the main bottleneck. Archive loading,
 especially zip reading/decompression, dominates the end-to-end time.
 
 ## Practical Implication
 
-A Rust helper probably should not just replace CKAN's zip parsing one-for-one.
-The stronger optimization path is:
+The Rust helper should not replace CKAN's zip parsing, repository update,
+resolver, install, or registry-write behavior. The useful role is to prepare an
+optional browse/search sidecar while CKAN-Linux keeps CKAN core authoritative.
+The current optimization path is:
 
 1. Download the CKAN-meta archive normally.
 2. Maintain a persistent extracted metadata cache.
 3. Scan the extracted cache in parallel.
-4. Produce a compact JSON or binary summary for the GUI or C# layer.
+4. Produce a compact JSON sidecar for CKAN-Linux catalog/search loading.
 
 That approach keeps network and compatibility behavior conservative while
 removing repeated archive overhead.
@@ -62,8 +64,10 @@ target/release/ckan-meta-rs relations data/CKAN-meta-master TUFX --limit 20
 target/release/ckan-meta-rs catalog-index data/CKAN-meta-master --output data/catalog-index.json --latest-only
 ```
 
-## Next Technical Steps
+## Current CKAN-Linux Integration
 
-- Compare this summary output against CKAN's `RepositoryData.FromStream(...)`.
-- Use `catalog-index` as the CKAN-Linux sidecar contract for catalog/search experiments.
-- Measure whether CKAN-Linux can use the sidecar index without disrupting existing repository update semantics.
+- `catalog-index` is the optional CKAN-Linux sidecar contract for catalog/search acceleration.
+- CKAN-Linux consumes the sidecar only when a valid index is configured.
+- CKAN-Linux falls back to the normal CKAN registry/repository cache path when the sidecar is missing or invalid.
+- CKAN core remains authoritative for metadata details, installs, updates, dependency resolution, compatibility decisions, and registry writes.
+- Keep comparing generator timings here with CKAN-Linux consumer timings from `scripts/benchmark-linuxgui-catalog.sh` in the CKAN-Linux repo.
