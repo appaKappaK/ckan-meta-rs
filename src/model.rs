@@ -151,6 +151,7 @@ pub struct MinimalModule {
     pub license: Option<Value>,
     pub version: Option<Value>,
     pub kind: Option<String>,
+    pub release_status: Option<String>,
     pub release_date: Option<String>,
     pub download_size: Option<Value>,
     pub ksp_version: Option<Value>,
@@ -178,6 +179,7 @@ pub struct ParsedModule {
     pub authors: Vec<String>,
     pub licenses: Vec<String>,
     pub kind: Option<String>,
+    pub release_status: String,
     pub release_date: Option<String>,
     pub download_size: Option<u64>,
     pub author_count: usize,
@@ -267,6 +269,8 @@ pub struct CatalogModule {
     pub authors: Vec<String>,
     pub licenses: Vec<String>,
     pub kind: Option<String>,
+    #[serde(default = "default_release_status")]
+    pub release_status: String,
     pub release_date: Option<String>,
     pub download_size: Option<u64>,
     pub download_count: Option<u64>,
@@ -280,6 +284,16 @@ pub struct CatalogModule {
     pub provided_names: Vec<String>,
     pub version_count: usize,
     pub is_latest: bool,
+    #[serde(default)]
+    pub is_latest_stable: bool,
+    #[serde(default)]
+    pub is_latest_testing: bool,
+    #[serde(default)]
+    pub is_latest_development: bool,
+}
+
+fn default_release_status() -> String {
+    "stable".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

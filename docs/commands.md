@@ -42,16 +42,19 @@ ckan-meta-rs validate-export data/modules.jsonl --json-lines
 Package JSON includes schema and aggregate report data. JSON-lines output is one
 module summary per line.
 
-`catalog-index` writes the richer optional CKAN-Linux sidecar shape: all module
-versions, latest flags, version counts, split relationship target names, reverse
-relationship edges, download counts, and provider mappings. It is intended for
-browse/search acceleration, not resolver, install, update, or registry-write
-replacement. CKAN-Linux falls back to its normal CKAN registry/repository cache
-path when no valid sidecar index is configured.
+`catalog-index` writes the richer optional CKAN-Linux sidecar shape: module
+versions, normalized release status, latest flags for stable/testing/development
+tolerances, version counts, split relationship target names, reverse relationship
+edges, download counts, and provider mappings. It is intended for browse/search
+acceleration, not resolver, install, update, or registry-write replacement.
+CKAN-Linux falls back to its normal CKAN registry/repository cache path when no
+valid sidecar index is configured.
 
-Use `--latest-only` for the smaller browse/search sidecar. Omit it when a
-consumer needs every historical module version. JSON is compact by default; use
-`--pretty` for manual inspection.
+Use `--latest-only` for the smaller browse/search sidecar. Schema v2 retains the
+union of the latest candidates for stable, testing, and development tolerances,
+allowing a consumer to honor CKAN's instance-wide and per-mod stability settings.
+Omit it when a consumer needs every historical module version. JSON is compact
+by default; use `--pretty` for manual inspection.
 
 ## Analysis Commands
 

@@ -260,12 +260,12 @@ pub fn export_package(archive: PathBuf) -> Result<ExportPackage> {
 pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex> {
     let parsed = parse_archive_details(archive)?;
     let version_counts = version_counts_by_identifier(&parsed.modules);
-    let latest_paths = latest_paths_by_identifier(&parsed.modules);
+    let latest_paths = latest_paths_by_stability(&parsed.modules);
 
     let modules = parsed
         .modules
         .iter()
-        .filter(|module| !latest_only || module_is_latest(module, &latest_paths))
+        .filter(|module| !latest_only || module_is_latest_for_any_stability(module, &latest_paths))
         .filter_map(|module| {
             catalog_module(
                 module,
@@ -278,7 +278,7 @@ pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex
     let relations = parsed
         .modules
         .iter()
-        .filter(|module| !latest_only || module_is_latest(module, &latest_paths))
+        .filter(|module| !latest_only || module_is_latest_for_any_stability(module, &latest_paths))
         .flat_map(catalog_relations_from_parsed)
         .collect::<Vec<_>>();
     let providers = modules
@@ -287,7 +287,7 @@ pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex
         .collect::<Vec<_>>();
 
     Ok(CatalogIndex {
-        schema_version: 1,
+        schema_version: 2,
         source: parsed.report.archive.clone(),
         generated_by: env!("CARGO_PKG_NAME").to_string(),
         report: CatalogIndexReport {
@@ -310,7 +310,10 @@ pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex
     })
 }
 
-fn module_is_latest(module: &ParsedModule, latest_paths: &BTreeMap<String, String>) -> bool {
+fn module_is_latest_for_any_stability(
+    module: &ParsedModule,
+    latest_paths: &BTreeMap<String, LatestModulePaths>,
+) -> bool {
     let Some(identifier) = module
         .identifier
         .as_ref()
@@ -320,7 +323,7 @@ fn module_is_latest(module: &ParsedModule, latest_paths: &BTreeMap<String, Strin
     };
     latest_paths
         .get(identifier)
-        .is_some_and(|path| path == &module.path)
+        .is_some_and(|paths| paths.contains(&module.path))
 }
 
 pub fn find_module_summaries(
@@ -808,6 +811,7 @@ fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
         authors: string_values(raw.author.as_ref()),
         licenses: string_values(raw.license.as_ref()),
         kind: raw.kind.map(clean_string),
+        release_status: normalize_release_status(raw.release_status.as_deref()),
         release_date: raw.release_date.map(clean_string),
         download_size: raw.download_size.as_ref().and_then(value_to_u64),
         author_count: collection_len(raw.author.as_ref()),
@@ -834,7 +838,7 @@ fn parse_module_entry(entry: &&TextEntry) -> Result<ParsedModule, ParseError> {
 fn catalog_module(
     module: &ParsedModule,
     version_counts: &BTreeMap<String, usize>,
-    latest_paths: &BTreeMap<String, String>,
+    latest_paths: &BTreeMap<String, LatestModulePaths>,
     download_counts: &BTreeMap<String, u64>,
 ) -> Option<CatalogModule> {
     let identifier = module.identifier.as_ref()?.trim();
@@ -860,6 +864,7 @@ fn catalog_module(
         authors: module.authors.clone(),
         licenses: module.licenses.clone(),
         kind: module.kind.clone(),
+        release_status: module.release_status.clone(),
         release_date: module.release_date.clone(),
         download_size: module.download_size,
         download_count: download_counts.get(identifier).copied(),
@@ -874,6 +879,19 @@ fn catalog_module(
         version_count: version_counts.get(identifier).copied().unwrap_or(1),
         is_latest: latest_paths
             .get(identifier)
+            .and_then(|paths| paths.development.as_ref())
+            .is_some_and(|path| path == &module.path),
+        is_latest_stable: latest_paths
+            .get(identifier)
+            .and_then(|paths| paths.stable.as_ref())
+            .is_some_and(|path| path == &module.path),
+        is_latest_testing: latest_paths
+            .get(identifier)
+            .and_then(|paths| paths.testing.as_ref())
+            .is_some_and(|path| path == &module.path),
+        is_latest_development: latest_paths
+            .get(identifier)
+            .and_then(|paths| paths.development.as_ref())
             .is_some_and(|path| path == &module.path),
     })
 }
@@ -983,8 +1001,23 @@ fn version_counts_by_identifier(modules: &[ParsedModule]) -> BTreeMap<String, us
     counts
 }
 
-fn latest_paths_by_identifier(modules: &[ParsedModule]) -> BTreeMap<String, String> {
-    let mut latest_by_identifier = BTreeMap::<String, &ParsedModule>::new();
+#[derive(Debug, Default)]
+struct LatestModulePaths {
+    stable: Option<String>,
+    testing: Option<String>,
+    development: Option<String>,
+}
+
+impl LatestModulePaths {
+    fn contains(&self, path: &str) -> bool {
+        self.stable.as_deref() == Some(path)
+            || self.testing.as_deref() == Some(path)
+            || self.development.as_deref() == Some(path)
+    }
+}
+
+fn latest_paths_by_stability(modules: &[ParsedModule]) -> BTreeMap<String, LatestModulePaths> {
+    let mut latest_by_identifier = BTreeMap::<String, [Option<&ParsedModule>; 3]>::new();
     for module in modules {
         let Some(identifier) = module
             .identifier
@@ -993,20 +1026,52 @@ fn latest_paths_by_identifier(modules: &[ParsedModule]) -> BTreeMap<String, Stri
         else {
             continue;
         };
-        latest_by_identifier
+        let release_rank = release_status_rank(&module.release_status);
+        let latest = latest_by_identifier
             .entry(identifier.clone())
-            .and_modify(|current| {
-                if compare_version_text(&module.version, &current.version).is_gt() {
-                    *current = module;
-                }
-            })
-            .or_insert(module);
+            .or_insert([None, None, None]);
+        for candidate in latest.iter_mut().skip(release_rank) {
+            if candidate.is_none_or(|current| {
+                compare_version_text(&module.version, &current.version).is_gt()
+            }) {
+                *candidate = Some(module);
+            }
+        }
     }
 
     latest_by_identifier
         .into_iter()
-        .map(|(identifier, module)| (identifier, module.path.clone()))
+        .map(|(identifier, modules)| {
+            (
+                identifier,
+                LatestModulePaths {
+                    stable: modules[0].map(|module| module.path.clone()),
+                    testing: modules[1].map(|module| module.path.clone()),
+                    development: modules[2].map(|module| module.path.clone()),
+                },
+            )
+        })
         .collect()
+}
+
+fn normalize_release_status(status: Option<&str>) -> String {
+    match status
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("development" | "alpha") => "development".to_string(),
+        Some("testing" | "beta") => "testing".to_string(),
+        _ => "stable".to_string(),
+    }
+}
+
+fn release_status_rank(status: &str) -> usize {
+    match status {
+        "development" => 2,
+        "testing" => 1,
+        _ => 0,
+    }
 }
 
 fn split_relationship_options(names: &[String]) -> Vec<String> {
@@ -1385,6 +1450,7 @@ mod tests {
                 "author": ["First", "Second"],
                 "license": "MIT",
                 "kind": "package",
+                "release_status": "beta",
                 "version": "1.2.3",
                 "release_date": "2026-04-28T00:00:00Z",
                 "download_size": 12345,
@@ -1427,6 +1493,7 @@ mod tests {
         );
         assert_eq!(parsed.licenses, vec!["MIT".to_string()]);
         assert_eq!(parsed.kind.as_deref(), Some("package"));
+        assert_eq!(parsed.release_status, "testing");
         assert_eq!(parsed.release_date.as_deref(), Some("2026-04-28T00:00:00Z"));
         assert_eq!(parsed.download_size, Some(12345));
         assert_eq!(parsed.author_count, 2);
@@ -1510,7 +1577,7 @@ mod tests {
         new_module.provided_names = vec!["ExampleVirtual".to_string()];
         let modules = vec![old_module, new_module];
         let version_counts = version_counts_by_identifier(&modules);
-        let latest_paths = latest_paths_by_identifier(&modules);
+        let latest_paths = latest_paths_by_stability(&modules);
         let download_counts = BTreeMap::from([("Example".to_string(), 42)]);
 
         let catalog_modules = modules
@@ -1533,6 +1600,9 @@ mod tests {
         assert_eq!(catalog_modules[0].version_count, 2);
         assert!(!catalog_modules[0].is_latest);
         assert!(catalog_modules[1].is_latest);
+        assert!(catalog_modules[1].is_latest_stable);
+        assert!(catalog_modules[1].is_latest_testing);
+        assert!(catalog_modules[1].is_latest_development);
         assert_eq!(
             catalog_modules[0].dependency_names,
             vec!["FirstOption".to_string(), "SecondOption".to_string()]
@@ -1542,6 +1612,29 @@ mod tests {
         assert_eq!(relations[1].target, "SecondOption");
         assert_eq!(providers.len(), 1);
         assert_eq!(providers[0].provided, "ExampleVirtual");
+    }
+
+    #[test]
+    fn latest_paths_track_each_release_stability_tolerance() {
+        let stable = test_module("Example", "1.0", "Example-1.0.ckan");
+        let mut testing = test_module("Example", "2.0-beta", "Example-2.0-beta.ckan");
+        testing.release_status = "testing".to_string();
+        let mut development = test_module("Example", "3.0-alpha", "Example-3.0-alpha.ckan");
+        development.release_status = "development".to_string();
+
+        let latest = latest_paths_by_stability(&[stable, testing, development]);
+        let paths = &latest["Example"];
+
+        assert_eq!(paths.stable.as_deref(), Some("Example-1.0.ckan"));
+        assert_eq!(paths.testing.as_deref(), Some("Example-2.0-beta.ckan"));
+        assert_eq!(paths.development.as_deref(), Some("Example-3.0-alpha.ckan"));
+    }
+
+    #[test]
+    fn release_status_aliases_match_ckan_values() {
+        assert_eq!(normalize_release_status(None), "stable");
+        assert_eq!(normalize_release_status(Some("beta")), "testing");
+        assert_eq!(normalize_release_status(Some("alpha")), "development");
     }
 
     fn test_module(identifier: &str, version: &str, path: &str) -> ParsedModule {
@@ -1556,6 +1649,7 @@ mod tests {
             authors: Vec::new(),
             licenses: Vec::new(),
             kind: None,
+            release_status: "stable".to_string(),
             release_date: None,
             download_size: None,
             author_count: 0,

@@ -17,7 +17,8 @@ browse/search acceleration layer.
 - Selects the latest version per identifier using CKAN-ish version ordering.
 - Exports stable package summaries for compatibility comparison.
 - Builds an optional CKAN-Linux catalog/search sidecar index with module rows,
-  reverse relationship edges, download counts, and provider mappings.
+  release-stability candidates, reverse relationship edges, download counts,
+  and provider mappings.
 - Downloads live CKAN-meta archives and maintains extracted metadata caches.
 - Searches identifiers, names, versions, relationship targets, unresolved
   references, and reverse relationships.
@@ -82,6 +83,23 @@ cargo run -- catalog-index data/CKAN-meta-cache \
 
 cargo run -- validate-catalog-index data/catalog-index.json
 ```
+
+Catalog schema v2 normalizes CKAN `release_status` values and marks the latest
+candidate allowed by stable, testing, and development tolerances. With
+`--latest-only`, the output retains the small union of those candidates rather
+than every historical version.
+
+For a configured CKAN-Linux development checkout, refresh the live metadata and
+atomically replace the default sidecar in one command:
+
+```bash
+scripts/refresh-ckan-linux-sidecar.sh
+```
+
+The script downloads and extracts current CKAN-meta, builds a latest-only index,
+validates it, and only then replaces `data/catalog-index-latest.json`. Its archive,
+cache, and output paths can be overridden with `CKAN_META_ARCHIVE`,
+`CKAN_META_CACHE_DIR`, and `CKAN_CATALOG_INDEX_OUTPUT`.
 
 To use the generated index with CKAN-Linux, either point the app at it:
 

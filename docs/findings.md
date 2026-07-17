@@ -67,6 +67,7 @@ target/release/ckan-meta-rs catalog-index data/CKAN-meta-master --output data/ca
 ## Current CKAN-Linux Integration
 
 - `catalog-index` is the optional CKAN-Linux sidecar contract for catalog/search acceleration.
+- Schema v2 carries normalized release status and latest-candidate flags for CKAN's stable, testing, and development tolerances.
 - CKAN-Linux consumes the sidecar only when a valid index is configured.
 - CKAN-Linux falls back to the normal CKAN registry/repository cache path when the sidecar is missing or invalid.
 - CKAN core remains authoritative for metadata details, installs, updates, dependency resolution, compatibility decisions, and registry writes.
