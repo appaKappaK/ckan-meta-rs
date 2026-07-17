@@ -1,5 +1,18 @@
 # Command Reference
 
+## Installation
+
+Install a release build from the current checkout:
+
+```bash
+scripts/install.sh
+```
+
+The default destination is `$CKAN_META_RS_INSTALL_DIR`, `$XDG_BIN_HOME`, or
+`~/.local/bin`, in that order. Pass `--install-dir DIR` to override it for one
+run. The installer builds with `Cargo.lock`, verifies the binary, and replaces
+the destination atomically.
+
 ## Source Inputs
 
 Most commands accept any of:

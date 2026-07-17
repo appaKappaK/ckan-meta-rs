@@ -18,22 +18,23 @@ registry changes.
 
 ## Getting Started
 
-Requires a stable Rust toolchain.
+Requires a stable Rust toolchain. Install the current checkout to
+`$XDG_BIN_HOME`, when set, or `~/.local/bin` with:
 
 ```bash
-cargo build --release
-target/release/ckan-meta-rs --help
+scripts/install.sh
+ckan-meta-rs --help
 ```
 
 Download and cache the current metadata, then inspect it:
 
 ```bash
-target/release/ckan-meta-rs sync \
+ckan-meta-rs sync \
   --archive data/CKAN-meta-master.zip \
   --cache-dir data/CKAN-meta-cache
 
-target/release/ckan-meta-rs parse data/CKAN-meta-cache
-target/release/ckan-meta-rs find data/CKAN-meta-cache Astronomer --limit 20
+ckan-meta-rs parse data/CKAN-meta-cache
+ckan-meta-rs find data/CKAN-meta-cache Astronomer --limit 20
 ```
 
 Most commands accept a CKAN-meta `.zip`, `.tar.gz`/`.tgz`, or extracted
