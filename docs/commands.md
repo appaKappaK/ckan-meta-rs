@@ -56,6 +56,33 @@ allowing a consumer to honor CKAN's instance-wide and per-mod stability settings
 Omit it when a consumer needs every historical module version. JSON is compact
 by default; use `--pretty` for manual inspection.
 
+### CKAN-Linux sidecar workflow
+
+For a configured CKAN-Linux development checkout, refresh the live metadata and
+atomically replace the default sidecar in one command:
+
+```bash
+scripts/refresh-ckan-linux-sidecar.sh
+```
+
+The script downloads and extracts current CKAN-meta, builds a latest-only index,
+validates it, and only then replaces `data/catalog-index-latest.json`. Override
+its paths with `CKAN_META_ARCHIVE`, `CKAN_META_CACHE_DIR`, and
+`CKAN_CATALOG_INDEX_OUTPUT`.
+
+Point CKAN-Linux at a generated sidecar with an environment variable:
+
+```bash
+CKAN_CATALOG_INDEX_PATH=/path/to/catalog-index.json ckan-linux
+```
+
+Alternatively, link it at the default app-data location:
+
+```bash
+mkdir -p ~/.local/share/CKAN
+ln -s /path/to/catalog-index.json ~/.local/share/CKAN/catalog-index-latest.json
+```
+
 ## Analysis Commands
 
 ```bash
