@@ -21,6 +21,9 @@ Most commands accept any of:
 - CKAN-meta `.tar.gz` or `.tgz`
 - Extracted metadata directory
 
+`refresh-sidecar` instead accepts one or more parsed repository-cache JSON files
+written by CKAN itself.
+
 ## Pipeline Commands
 
 ```bash
@@ -70,6 +73,30 @@ Omit it when a consumer needs every historical module version. JSON is compact
 by default; use `--pretty` for manual inspection.
 
 ### CKAN-Linux sidecar workflow
+
+Installed CKAN-Linux integration uses the active repository files in CKAN's
+cache and runs this command automatically after a real metadata refresh (or
+when an existing sidecar is missing or stale):
+
+```bash
+ckan-meta-rs refresh-sidecar \
+  --repository-cache ~/.local/share/CKAN/repos/HASH-KSP-default.json \
+  --output ~/.local/share/CKAN/catalog-index-latest.json \
+  --json
+```
+
+Repeat `--repository-cache PATH` for each active repository, in CKAN priority
+order. Duplicate identifier/version entries use the first repository, matching
+CKAN's precedence. `--source-fingerprint` can attach the ordered snapshot
+fingerprint used by CKAN-Linux to reject an index produced for a different
+repository set.
+
+`refresh-sidecar` reads only CKAN's local cache, writes a temporary file beside
+the destination, validates that it contains a supported non-empty catalog, and
+atomically replaces the destination. Any failure leaves the previous sidecar
+untouched.
+
+### Standalone source-checkout workflow
 
 For a configured CKAN-Linux development checkout, refresh the live metadata and
 atomically replace the default sidecar in one command:

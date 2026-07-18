@@ -4,6 +4,7 @@ set -euo pipefail
 fixture_dir="${FIXTURE_DIR:-/home/matth/GithubProjects/CKAN-github/CKAN-Linux/Tests/Data}"
 zip_fixture="$fixture_dir/CKAN-meta-testkan.zip"
 tar_fixture="$fixture_dir/CKAN-meta-testkan.tar.gz"
+repository_fixture="$fixture_dir/repository.json"
 
 cargo fmt -- --check
 cargo test --locked
@@ -22,6 +23,16 @@ fi
 
 if [[ -f "$zip_fixture" && -f "$tar_fixture" ]]; then
     target/release/ckan-meta-rs compare "$zip_fixture" "$tar_fixture" >/dev/null
+fi
+
+if [[ -f "$repository_fixture" ]]; then
+    target/release/ckan-meta-rs refresh-sidecar \
+        --repository-cache "$repository_fixture" \
+        --output /tmp/ckan-meta-rs-cache-sidecar.json \
+        --source-fingerprint smoke-test \
+        --json >/dev/null
+    target/release/ckan-meta-rs validate-catalog-index \
+        /tmp/ckan-meta-rs-cache-sidecar.json >/dev/null
 fi
 
 echo "smoke checks passed"

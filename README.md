@@ -15,6 +15,8 @@ registry changes.
 - Exports module summaries as JSON or JSON Lines.
 - Generates and validates the schema-v2 CKAN-Linux catalog sidecar, including
   stable, testing, and development release candidates.
+- Builds that sidecar directly from CKAN's parsed repository cache, including
+  the active custom repositories selected by CKAN-Linux.
 
 ## Getting Started
 
@@ -42,14 +44,30 @@ directory.
 
 ## CKAN-Linux Sidecar
 
-To refresh, build, validate, and atomically replace the local sidecar:
+Once the binary is installed, current CKAN-Linux builds discover it and refresh
+the fast catalog automatically after CKAN updates its repository metadata. The
+helper consumes the exact cache files CKAN just loaded, so no second metadata
+download is needed. A missing or failed helper is nonfatal; CKAN-Linux falls
+back to its normal registry catalog.
+
+The equivalent one-shot command is:
+
+```bash
+ckan-meta-rs refresh-sidecar \
+  --repository-cache ~/.local/share/CKAN/repos/HASH-KSP-default.json \
+  --output ~/.local/share/CKAN/catalog-index-latest.json
+```
+
+Repeat `--repository-cache` in CKAN priority order when more than one repository
+is active. The command builds and validates a sibling temporary file, then
+atomically replaces the output only after the new index is valid.
+
+The source-checkout workflow remains available for generating a default-repo
+sidecar without CKAN's parsed cache:
 
 ```bash
 scripts/refresh-ckan-linux-sidecar.sh
 ```
-
-The sidecar only accelerates catalog browsing and search. CKAN-Linux falls back
-to its normal registry cache whenever a valid sidecar is unavailable.
 
 See the [command reference](docs/commands.md#export-commands) for manual
 generation, configuration, and schema details.

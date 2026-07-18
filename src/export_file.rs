@@ -26,6 +26,10 @@ pub fn validate_catalog_index_file(path: &Path) -> Result<CatalogIndexValidation
         "unsupported catalog schema version {}",
         index.schema_version
     );
+    ensure!(
+        !index.modules.is_empty(),
+        "catalog index contains no modules"
+    );
     if index.schema_version == 2 {
         validate_schema_v2_stability(&index)?;
     }

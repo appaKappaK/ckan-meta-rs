@@ -1,6 +1,8 @@
-use std::path::PathBuf;
+use std::fs::{self, OpenOptions};
+use std::io;
+use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 
@@ -10,6 +12,7 @@ mod export_file;
 mod model;
 mod output;
 mod parser;
+mod repository_cache;
 
 use archive::extract_relevant_entries;
 use download::download_to_file;
@@ -23,9 +26,9 @@ use output::{
     write_export_package,
 };
 use parser::{
-    benchmark_archive, catalog_index, compare_archives, export_package, find_module_summaries,
-    inspect_module, latest_module_summaries, module_summaries, parse_archive_report,
-    relation_matches, relation_stats, unresolved_relations,
+    benchmark_archive, catalog_index, catalog_index_from_repository_caches, compare_archives,
+    export_package, find_module_summaries, inspect_module, latest_module_summaries,
+    module_summaries, parse_archive_report, relation_matches, relation_stats, unresolved_relations,
 };
 
 #[derive(Debug, Parser)]
@@ -144,6 +147,29 @@ enum Command {
         input: PathBuf,
 
         /// Emit machine-readable JSON instead of a terminal report.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Build and atomically replace a CKAN-Linux sidecar from CKAN's own cache.
+    RefreshSidecar {
+        /// Active CKAN repository cache JSON file, in priority order. Repeat for each repository.
+        #[arg(long = "repository-cache", required = true)]
+        repository_caches: Vec<PathBuf>,
+
+        /// Sidecar file to replace after generation and validation succeeds.
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Fingerprint supplied by CKAN for the ordered repository snapshot.
+        #[arg(long)]
+        source_fingerprint: Option<String>,
+
+        /// Pretty-print the sidecar instead of writing compact JSON.
+        #[arg(long)]
+        pretty: bool,
+
+        /// Emit a machine-readable completion report.
         #[arg(long)]
         json: bool,
     },
@@ -401,6 +427,13 @@ fn main() -> Result<()> {
             pretty,
         } => catalog_index_command(archive, output, latest_only, pretty),
         Command::ValidateCatalogIndex { input, json } => validate_catalog_index(input, json),
+        Command::RefreshSidecar {
+            repository_caches,
+            output,
+            source_fingerprint,
+            pretty,
+            json,
+        } => refresh_sidecar(repository_caches, output, source_fingerprint, pretty, json),
         Command::ValidateExport {
             input,
             json_lines,
@@ -523,6 +556,183 @@ fn catalog_index_command(
 fn validate_catalog_index(input: PathBuf, json: bool) -> Result<()> {
     let report = validate_catalog_index_file(&input)?;
     print_catalog_index_validation(&report, json)
+}
+
+fn refresh_sidecar(
+    repository_caches: Vec<PathBuf>,
+    output: PathBuf,
+    source_fingerprint: Option<String>,
+    pretty: bool,
+    json: bool,
+) -> Result<()> {
+    let mut index =
+        catalog_index_from_repository_caches(&repository_caches, true, source_fingerprint.clone())?;
+    // Make the source stable and concise instead of embedding machine-specific
+    // absolute cache paths in a public-facing index.
+    index.source = format!(
+        "CKAN repository cache ({} source(s))",
+        repository_caches.len()
+    );
+
+    let temp = SiblingTempFile::create(&output)?;
+    write_catalog_index(&index, temp.path(), pretty)?;
+    let validation = validate_catalog_index_file(temp.path())?;
+    temp.replace(&output)?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "output": output.display().to_string(),
+                "repository_caches": repository_caches.len(),
+                "source_fingerprint": source_fingerprint,
+                "schema_version": validation.schema_version,
+                "modules": validation.modules,
+                "unique_identifiers": validation.unique_identifiers,
+                "latest_modules": validation.latest_modules,
+            }))?
+        );
+    } else {
+        println!(
+            "Updated CKAN Linux catalog sidecar: {} ({} modules, {} identifiers)",
+            output.display(),
+            validation.modules,
+            validation.unique_identifiers
+        );
+    }
+
+    Ok(())
+}
+
+struct SiblingTempFile {
+    path: PathBuf,
+    keep: bool,
+}
+
+impl SiblingTempFile {
+    fn create(output: &Path) -> Result<Self> {
+        if output == Path::new("-") {
+            anyhow::bail!("refresh-sidecar requires a file output path");
+        }
+
+        let parent = output
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+        let file_name = output
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("catalog-index.json");
+
+        for attempt in 0..1000_u32 {
+            let candidate = parent.join(format!(
+                ".{file_name}.{}.{}.tmp",
+                std::process::id(),
+                attempt
+            ));
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+            {
+                Ok(_) => {
+                    return Ok(Self {
+                        path: candidate,
+                        keep: false,
+                    });
+                }
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(error).with_context(|| {
+                        format!(
+                            "failed to create temporary sidecar beside {}",
+                            output.display()
+                        )
+                    });
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "could not reserve a temporary sidecar beside {}",
+            output.display()
+        )
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn replace(mut self, output: &Path) -> Result<()> {
+        fs::rename(&self.path, output).with_context(|| {
+            format!(
+                "failed to atomically replace {} with generated sidecar",
+                output.display()
+            )
+        })?;
+        self.keep = true;
+        Ok(())
+    }
+}
+
+impl Drop for SiblingTempFile {
+    fn drop(&mut self) {
+        if !self.keep {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+#[cfg(test)]
+mod sidecar_temp_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn abandoned_generation_preserves_existing_sidecar() {
+        let root = unique_temp_dir();
+        let output = root.join("catalog-index.json");
+        fs::write(&output, "old").unwrap();
+
+        {
+            let temp = SiblingTempFile::create(&output).unwrap();
+            fs::write(temp.path(), "invalid new file").unwrap();
+        }
+
+        assert_eq!(fs::read_to_string(&output).unwrap(), "old");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn validated_generation_replaces_existing_sidecar() {
+        let root = unique_temp_dir();
+        let output = root.join("catalog-index.json");
+        fs::write(&output, "old").unwrap();
+        let temp = SiblingTempFile::create(&output).unwrap();
+        fs::write(temp.path(), "new").unwrap();
+
+        temp.replace(&output).unwrap();
+
+        assert_eq!(fs::read_to_string(&output).unwrap(), "new");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn unique_temp_dir() -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "ckan-meta-rs-sidecar-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
 }
 
 fn validate_export(input: PathBuf, json_lines: bool, json: bool) -> Result<()> {

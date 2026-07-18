@@ -77,6 +77,7 @@ mv -f -- "$temp_binary" "$install_dir/ckan-meta-rs"
 trap - EXIT
 
 printf 'Installed ckan-meta-rs to %s\n' "$install_dir/ckan-meta-rs"
+printf 'CKAN-Linux can now refresh its Rust catalog sidecar automatically.\n'
 case ":${PATH:-}:" in
     *":$install_dir:"*) ;;
     *) printf 'Add %s to PATH to run ckan-meta-rs from any directory.\n' "$install_dir" ;;

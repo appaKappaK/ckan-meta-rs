@@ -7,7 +7,7 @@ use anyhow::{bail, Context, Result};
 use rayon::prelude::*;
 use serde_json::Value;
 
-use crate::archive::{archive_kind, load_archive, TextEntry};
+use crate::archive::{archive_kind, load_archive, ArchiveLoad, TextEntry};
 use crate::model::{
     clean_string, collection_len, has_text, has_value, value_to_text, BenchReport, CatalogIndex,
     CatalogIndexReport, CatalogModule, CatalogProvider, CatalogRelation, CompareDifference,
@@ -15,6 +15,7 @@ use crate::model::{
     ParseError, ParseReport, ParsedModule, RelationMatch, RelationStatsReport, RelationTargetCount,
     TimingStats, UnresolvedRelationReport, UnresolvedRelationTarget,
 };
+use crate::repository_cache::load_repository_caches;
 
 #[derive(Debug)]
 pub struct ArchiveParse {
@@ -35,6 +36,26 @@ pub fn parse_archive_details(archive: PathBuf) -> Result<ArchiveParse> {
     let started = Instant::now();
     let archive_kind = archive_kind(&archive)?;
     let loaded = load_archive(&archive, archive_kind)?;
+    parse_loaded_details(archive.display().to_string(), archive_kind, loaded, started)
+}
+
+fn parse_repository_cache_details(paths: &[PathBuf]) -> Result<ArchiveParse> {
+    let started = Instant::now();
+    let loaded = load_repository_caches(paths)?;
+    let source = paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(";");
+    parse_loaded_details(source, "repository-cache", loaded, started)
+}
+
+fn parse_loaded_details(
+    source: String,
+    source_kind: &str,
+    loaded: ArchiveLoad,
+    started: Instant,
+) -> Result<ArchiveParse> {
     let parse_started = Instant::now();
 
     let ckan_entries: Vec<&TextEntry> = loaded
@@ -80,8 +101,8 @@ pub fn parse_archive_details(archive: PathBuf) -> Result<ArchiveParse> {
         .collect::<Vec<_>>();
 
     let report = ParseReport {
-        archive: archive.display().to_string(),
-        archive_kind: archive_kind.to_string(),
+        archive: source,
+        archive_kind: source_kind.to_string(),
         archive_entries: loaded.archive_entries,
         relevant_entries: loaded.entries.len(),
         ckan_entries: ckan_entries.len(),
@@ -259,6 +280,23 @@ pub fn export_package(archive: PathBuf) -> Result<ExportPackage> {
 
 pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex> {
     let parsed = parse_archive_details(archive)?;
+    Ok(build_catalog_index(parsed, latest_only, None))
+}
+
+pub fn catalog_index_from_repository_caches(
+    paths: &[PathBuf],
+    latest_only: bool,
+    source_fingerprint: Option<String>,
+) -> Result<CatalogIndex> {
+    let parsed = parse_repository_cache_details(paths)?;
+    Ok(build_catalog_index(parsed, latest_only, source_fingerprint))
+}
+
+fn build_catalog_index(
+    parsed: ArchiveParse,
+    latest_only: bool,
+    source_fingerprint: Option<String>,
+) -> CatalogIndex {
     let version_counts = version_counts_by_identifier(&parsed.modules);
     let latest_paths = latest_paths_by_stability(&parsed.modules);
 
@@ -286,9 +324,10 @@ pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex
         .flat_map(catalog_providers)
         .collect::<Vec<_>>();
 
-    Ok(CatalogIndex {
+    CatalogIndex {
         schema_version: 2,
         source: parsed.report.archive.clone(),
+        source_fingerprint,
         generated_by: env!("CARGO_PKG_NAME").to_string(),
         report: CatalogIndexReport {
             parsed_modules: parsed.report.parsed_modules,
@@ -307,7 +346,7 @@ pub fn catalog_index(archive: PathBuf, latest_only: bool) -> Result<CatalogIndex
         modules,
         relations,
         providers,
-    })
+    }
 }
 
 fn module_is_latest_for_any_stability(

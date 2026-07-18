@@ -234,6 +234,8 @@ pub struct ModuleSummary {
 pub struct CatalogIndex {
     pub schema_version: u32,
     pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_fingerprint: Option<String>,
     pub generated_by: String,
     pub report: CatalogIndexReport,
     pub modules: Vec<CatalogModule>,
